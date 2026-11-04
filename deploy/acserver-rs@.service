@@ -1,0 +1,86 @@
+[Unit]
+# Templated unit for running several acserver-rs instances from one flat cfg dir.
+# The instance name (%i) selects the config files by convention:
+#   systemctl start acserver-rs@prac   ->  server_cfg_prac.ini + entry_list_prac.ini
+#   systemctl start acserver-rs@dtm    ->  server_cfg_dtm.ini  + entry_list_dtm.ini
+# Override any path per instance in /etc/sysconfig/acserver-rs-%i (see
+# deploy/acserver-rs-instance.sysconfig for the template).
+Description=Assetto Corsa dedicated server (acserver-rs) [%i]
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=acserver-rs
+Group=acserver-rs
+
+# All instances share the one state directory. Config files live flat inside
+# its cfg/ subdir under distinct names; each instance is pointed at its own
+# server_cfg / entry_list by --cfg / --entry below. results/*.json and
+# blacklist.txt are rooted at the config file's directory (here the shared
+# cfg/), so the blacklist is shared and results land in cfg/results — see the
+# "Results" note in deploy/README.md.
+StateDirectory=acserver-rs
+WorkingDirectory=/var/lib/acserver-rs
+
+# Convention-based defaults keyed on the instance name (%i). Override any of
+# these in /etc/sysconfig/acserver-rs-%i. Checksums default on against
+# /var/lib/acserver-rs/content; blank ACSERVER_CONTENT_FLAG to run without them.
+Environment=ACSERVER_CFG=/var/lib/acserver-rs/cfg/server_cfg_%i.ini
+Environment=ACSERVER_ENTRY=/var/lib/acserver-rs/cfg/entry_list_%i.ini
+Environment="ACSERVER_CONTENT_FLAG=--content /var/lib/acserver-rs/content"
+Environment=ACSERVER_EXTRA_FLAG=
+Environment=ACSERVER_DEBUG=
+EnvironmentFile=-/etc/sysconfig/acserver-rs-%i
+ExecStart=/usr/local/bin/acserver-rs --cfg ${ACSERVER_CFG} --entry ${ACSERVER_ENTRY} $ACSERVER_EXTRA_FLAG $ACSERVER_CONTENT_FLAG $ACSERVER_DEBUG
+
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+KillSignal=SIGTERM
+
+# Logging: the server writes slog text output to stderr.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=acserver-rs-%i
+
+# --- Hardening ---------------------------------------------------------
+# Default ports are unprivileged; no capabilities are needed. If you move an
+# instance's HTTP API below 1024, add:
+#   AmbientCapabilities=CAP_NET_BIND_SERVICE
+#   CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+# Drop PrivateUsers if you bind-mount content from an NFS/CIFS share or hit
+# permission errors on files owned by other users.
+PrivateUsers=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+UMask=0027
+
+# Resource limits: one process, a few goroutines, one socket per player.
+LimitNOFILE=8192
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

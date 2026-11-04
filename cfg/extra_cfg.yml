@@ -1,0 +1,62 @@
+# Optional AssettoServer-style settings. Deleting this file disables extensions;
+# the built-in position validation default remains enabled.
+
+# AS hardening: drop malformed (NaN / out-of-range) position updates.
+ValidatePositionUpdates: true
+
+# Require UDP association from the TCP peer's /24 (IPv6: /48). Off by default:
+# it rejects genuine clients whose TCP and UDP flows leave via different public
+# addresses (carrier-grade NAT, dual-WAN).
+ValidateUDPSource: false
+
+# Vanilla behaviour.
+EnableSessionVoting: true
+EnableKickVoting: true
+WriteResultJson: true
+
+# Content Manager "server details" view (/api/details + "ℹ<port>" name suffix).
+EnableServerDetails: true
+ServerDescription: "Public MX-5 Cup pickup racing at Brands Hatch"
+
+# Override the [name, ISO-code] country reported by /INFO and /api/details.
+# Vanilla derives this from a GeoIP lookup of the server's public IP; Content
+# Manager uses the ISO code for the flag icon. Leave unset to report ["na","na"].
+# Country: ["Australia", "AU"]
+
+# Content Manager content downloads: advertise a `content` manifest in
+# /api/details and serve /content/car|skin|track as zips built on the fly from
+# the --content game folder (so there is nothing to pre-package). Requires
+# --content to be set. When the server has a join PASSWORD, downloads are gated on
+# CM's SHA1 token. Off by default.
+EnableContentDownloads: false
+
+# Custom Shaders Patch extensions (docs/04). On by default and inert for a
+# client that did not send a CSP build, so vanilla clients never see them.
+# Kick message, car visibility, SpectateCar and CSPExtraOptions:
+EnableCSP: true
+# Relay CSP client messages between CSP clients, over TCP and over UDP:
+EnableClientMessages: true
+EnableUdpClientMessages: true
+# Refuse a join with an older (or no) CSP build. 0 admits everyone, vanilla
+# clients included; set it only for a CSP-only server.
+MinimumCSPVersion: 0
+# INI text for CSP, sent in the welcome message to CSP clients only, e.g.
+# CSPExtraOptions: |
+#   [EXTRA_TWEAKS]
+#   MIN_TIME_BETWEEN_COLLISIONS = 2
+
+# Optional Source-style RCON remote console (AssettoServer addition).
+EnableRcon: false
+RconPort: 0
+
+# Gameplay tweaks.
+EnableUnlimitedP2P: false
+
+# Handshake -> first update. Only joining is timed out: a loaded client can be
+# silent on TCP for minutes while parked, since it drives over UDP.
+PlayerLoadingTimeoutMinutes: 5
+
+# Anti-spam: drop chat sent within this many ms of the sender's last message.
+# 0 is vanilla (no limit); AssettoServer uses 1000. A limit also swallows chat
+# commands typed in quick succession.
+ChatRateLimitMs: 1000

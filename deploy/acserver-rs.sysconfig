@@ -1,0 +1,16 @@
+# /etc/sysconfig/acserver-rs — environment for acserver-rs.service.
+# Every value is optional; the unit ships working defaults.
+
+# Directory holding server_cfg.ini, entry_list.ini and (optionally)
+# extra_cfg.yml. Session results are written to <ACSERVER_CFG>/results,
+# so it must stay inside /var/lib/acserver-rs.
+ACSERVER_CFG=/var/lib/acserver-rs/cfg
+
+# Checksum verification against an AC "content" directory. The unit defaults
+# this to /var/lib/acserver-rs/content; point it elsewhere here, or set it empty
+# to run without file verification.
+ACSERVER_CONTENT_FLAG=--content /var/lib/acserver-rs/content
+#ACSERVER_CONTENT_FLAG=
+
+# Verbose logging.
+#ACSERVER_DEBUG=--debug

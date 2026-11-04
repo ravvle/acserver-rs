@@ -1,0 +1,349 @@
+name: Build binaries
+
+# Releases build on a tag push (or a manual run); pull requests get the
+# checks. Pushes to main build nothing: the full suite runs locally before
+# every commit.
+on:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: Check the server and the test tooling
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        # With no arguments, rustup installs what rust/rust-toolchain.toml names.
+        working-directory: rust
+        run: rustup toolchain install
+
+      - name: Format
+        working-directory: rust
+        run: cargo fmt --check
+
+      - name: Lint
+        working-directory: rust
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        working-directory: rust
+        run: cargo test
+
+      - name: Install cargo-about
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+
+      - name: THIRD_PARTY_LICENSES is current
+        working-directory: rust
+        run: |
+          # Every crate linked into acserver-rs on any release target must be
+          # listed; regenerate with the command in rust/about.toml.
+          cargo about generate about.hbs -o "${RUNNER_TEMP}/licenses"
+          diff -u ../THIRD_PARTY_LICENSES "${RUNNER_TEMP}/licenses"
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: test/go.mod
+          cache-dependency-path: test/go.sum
+          cache: true
+
+      - name: Vet the Go test tooling
+        working-directory: test
+        run: |
+          go vet ./...
+          test -z "$(gofmt -l .)"
+
+  cleanup:
+    name: Delete old artifacts
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Delete old artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Keep the latest release's artifacts and delete the rest rather
+          # than wait out their retention. Runs before the builds upload,
+          # which a full storage quota would otherwise fail.
+          latest="$(gh release view --repo "${GITHUB_REPOSITORY}" \
+            --json tagName --jq .tagName 2>/dev/null || true)"
+          gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
+            --jq ".artifacts[]
+              | select(.workflow_run.id != ${GITHUB_RUN_ID}
+                and .workflow_run.head_branch != \"${latest}\")
+              | .id" \
+            | while read -r id; do
+                gh api -X DELETE \
+                  "repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}"
+              done
+
+  build:
+    name: Build ${{ matrix.name }}
+    if: github.event_name != 'pull_request'
+    needs: cleanup
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux builds are static musl binaries, so they run on any
+          # distribution. ring compiles C: musl-gcc on x86_64, clang
+          # elsewhere, linked by rust-lld against Rust's bundled musl.
+          - name: linux-amd64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - name: linux-arm64
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            clang_target: aarch64-linux-musl
+          - name: linux-armv7
+            os: ubuntu-latest
+            target: armv7-unknown-linux-musleabihf
+            clang_target: armv7-linux-musleabihf
+          # Windows links the C runtime statically (rust/.cargo/config.toml).
+          # ring needs clang for arm64, which the runner image has.
+          - name: windows-amd64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - name: windows-arm64
+            os: windows-latest
+            target: aarch64-pc-windows-msvc
+          - name: darwin-amd64
+            os: macos-latest
+            target: x86_64-apple-darwin
+          - name: darwin-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: rust
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        run: |
+          rustup toolchain install
+          rustup target add "${{ matrix.target }}"
+
+      - name: Install musl-gcc
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Configure the clang cross build
+        if: matrix.clang_target != ''
+        run: |
+          # cc and cargo read these per target; the variable names use the
+          # target with '-' as '_' (and upper case for cargo's).
+          triple="${{ matrix.target }}"
+          cc_triple="${triple//-/_}"
+          cargo_triple="$(echo "${cc_triple}" | tr '[:lower:]' '[:upper:]')"
+          {
+            echo "CC_${cc_triple}=clang"
+            echo "CFLAGS_${cc_triple}=--target=${{ matrix.clang_target }}"
+            echo "CARGO_TARGET_${cargo_triple}_LINKER=rust-lld"
+            # Replaces [build] rustflags, so the solver flag is repeated.
+            echo "CARGO_TARGET_${cargo_triple}_RUSTFLAGS=-Znext-solver=globally -C link-self-contained=yes"
+          } >> "${GITHUB_ENV}"
+
+      - name: Build
+        env:
+          CC_x86_64_unknown_linux_musl: musl-gcc
+        run: cargo build --release --locked --target "${{ matrix.target }}"
+
+      - name: Lay out the binary
+        run: |
+          # release/acserver-rs-<name>/acserver-rs[.exe], as the publish job expects.
+          extension=""
+          if [[ "${{ matrix.name }}" == windows-* ]]; then
+            extension=".exe"
+          fi
+          out="../release/acserver-rs-${{ matrix.name }}"
+          mkdir -p "${out}"
+          cp "target/${{ matrix.target }}/release/acserver-rs${extension}" "${out}/"
+          if [[ "${{ matrix.name }}" == linux-* ]]; then
+            file "${out}/acserver-rs"
+            file "${out}/acserver-rs" | grep -qE "statically linked|static-pie linked"
+          fi
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: acserver-rs-${{ matrix.name }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Publish
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: acserver-rs-*
+          path: release/
+          merge-multiple: true
+
+      - name: Prepare standalone and ready-to-run downloads
+        run: |
+          for directory in release/acserver-rs-*; do
+            artifact="${directory#release/}"
+            target="${artifact#acserver-rs-}"
+            extension=""
+            if [[ "$target" == windows-* ]]; then
+              extension=".exe"
+            fi
+
+            binary_name="acserver-rs-${target}${extension}"
+            install -m 0755 \
+              "${directory}/acserver-rs${extension}" \
+              "${binary_name}"
+
+            bundle_dir="bundles/acserver-rs-${target}"
+            install -d "${bundle_dir}/cfg" "${bundle_dir}/system/data"
+            install -m 0755 \
+              "${directory}/acserver-rs${extension}" \
+              "${bundle_dir}/acserver-rs${extension}"
+            install -m 0644 \
+              cfg/server_cfg.ini \
+              cfg/entry_list.ini \
+              cfg/extra_cfg.yml \
+              "${bundle_dir}/cfg/"
+            install -m 0644 \
+              system/data/surfaces.ini \
+              "${bundle_dir}/system/data/"
+            install -m 0644 LICENSE THIRD_PARTY_LICENSES "${bundle_dir}/"
+            cp -r content "${bundle_dir}/content"
+
+            if [[ "$target" == windows-* ]]; then
+              printf '%s\r\n' \
+                '@echo off' \
+                'cd /d "%~dp0"' \
+                'acserver-rs.exe --cfg cfg --content content' \
+                > "${bundle_dir}/start.bat"
+              chmod 0755 "${bundle_dir}/start.bat"
+            else
+              printf '%s\n' \
+                '#!/bin/sh' \
+                'cd "$(dirname "$0")"' \
+                './acserver-rs --cfg cfg --content content' \
+                > "${bundle_dir}/start.sh"
+              chmod 0755 "${bundle_dir}/start.sh"
+            fi
+
+            # Windows gets a zip, which Explorer opens natively. Linux and
+            # macOS get a gzipped tarball, which keeps the executable bits
+            # on acserver-rs and start.sh whatever tool extracts it.
+            if [[ "$target" == windows-* ]]; then
+              (
+                cd bundles
+                zip -9 -r "../acserver-rs-${target}-ready-to-run.zip" \
+                  "acserver-rs-${target}"
+              )
+            else
+              tar -C bundles --owner=0 --group=0 --numeric-owner \
+                -cf - "acserver-rs-${target}" \
+                | gzip -9 > "acserver-rs-${target}-ready-to-run.tar.gz"
+            fi
+          done
+          find . -maxdepth 1 -type f -name 'acserver-rs-*' -print0 \
+            | sort -z \
+            | xargs -0 sha256sum \
+            > SHA256SUMS
+
+      - name: Check the bundles keep their executable bits
+        run: |
+          # The server binary and the start script must be executable in
+          # every bundle, as the archive stores them.
+          status=0
+          for archive in acserver-rs-*-ready-to-run.tar.gz; do
+            for name in acserver-rs start.sh; do
+              tar -tvzf "${archive}" | grep -qE "^-rwxr-xr-x .*/${name}$" \
+                || { echo "${archive}: ${name} is not executable"; status=1; }
+            done
+          done
+          for archive in acserver-rs-*-ready-to-run.zip; do
+            for name in acserver-rs.exe start.bat; do
+              zipinfo "${archive}" | grep -qE "^-rwxr-xr-x .*/${name}$" \
+                || { echo "${archive}: ${name} is not executable"; status=1; }
+            done
+          done
+          exit "${status}"
+
+      - name: Extract release notes
+        run: |
+          # The hand-written section for this tag, if CHANGELOG.md has one:
+          # everything between "## <tag>" and the next "## " heading.
+          awk -v tag="${GITHUB_REF_NAME}" '
+            $0 == "## " tag { collecting = 1; next }
+            collecting && /^## / { exit }
+            collecting { print }
+          ' CHANGELOG.md > NOTES.md
+          if [ -s NOTES.md ]; then
+            echo "have_notes=true" >> "${GITHUB_ENV}"
+          else
+            echo "no CHANGELOG.md section for ${GITHUB_REF_NAME}; generating notes"
+            echo "have_notes=false" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mapfile -t assets < <(
+            find . -maxdepth 1 -type f -name 'acserver-rs-*' -printf '%f\n' \
+              | sort
+          )
+          # The bare binaries carry their licence notices as separate assets.
+          assets+=(SHA256SUMS LICENSE THIRD_PARTY_LICENSES)
+          if [ "${have_notes}" = "true" ]; then
+            notes=(--notes-file NOTES.md)
+          else
+            notes=(--generate-notes)
+          fi
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" "${assets[@]}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" "${assets[@]}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              "${notes[@]}"
+          fi

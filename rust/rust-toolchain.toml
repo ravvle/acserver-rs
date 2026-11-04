@@ -1,0 +1,5 @@
+[toolchain]
+# Pinned, so a nightly change cannot break the build; .cargo/config.toml
+# needs nightly for the next-generation trait solver.
+channel = "nightly-2026-10-31"
+components = ["rustfmt", "clippy"]

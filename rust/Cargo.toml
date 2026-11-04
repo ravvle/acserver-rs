@@ -1,0 +1,58 @@
+[package]
+name = "acserver-rs"
+version = "1.0.0"
+edition = "2024"
+description = "acserver-rs, an Assetto Corsa multiplayer server (protocol 202)"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[dependencies]
+anyhow = "1"
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
+base64 = "0.22"
+bytes = "1"
+clap = { version = "4", features = ["derive"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+chrono-tz = { version = "0.10", default-features = false }
+flate2 = "1"
+form_urlencoded = "1"
+glam = "0.30"
+half = "2"
+governor = { version = "0.10", default-features = false, features = ["std"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+md-5 = "0.11"
+parking_lot = "0.12"
+percent-encoding = "2"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rand = "0.9"
+regex = "1"
+maxminddb = "0.26"
+rstar = "0.13"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha1 = "0.11"
+smart-default = "0.7"
+serde_norway = "0.9"
+subtle = "2"
+socket2 = { version = "0.6", features = ["all"] }
+thiserror = "2"
+tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-util = { version = "0.7", features = ["codec", "rt"] }
+tower = { version = "0.5", default-features = false, features = ["util"] }
+tower-http = { version = "0.7", default-features = false, features = ["cors", "fs"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+walkdir = "2"
+zip = { version = "9", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+tempfile = "3"
+
+[profile.release]
+strip = true
+# Link-time optimisation over the whole program, as one codegen unit: a
+# smaller binary (5.8 to 4.7 MiB, 1.3 MB less idle RSS) and usually faster
+# code, for a slower release build (about 70 s instead of 15 s).
+lto = true
+codegen-units = 1

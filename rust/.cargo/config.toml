@@ -1,0 +1,12 @@
+# The next-generation trait solver, nightly-only (hence the pinned nightly in
+# rust-toolchain.toml). It changes what the compiler accepts, not the code it
+# generates. Polonius (-Zpolonius) is left out: on nightly-2026-10-31 it
+# crashes the compiler while borrow-checking hashbrown.
+[build]
+rustflags = ["-Znext-solver=globally"]
+
+# Windows builds link the C runtime statically, so the binary needs no Visual
+# C++ redistributable. A target's rustflags replace [build]'s, so the solver
+# flag is repeated.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-Znext-solver=globally", "-C", "target-feature=+crt-static"]

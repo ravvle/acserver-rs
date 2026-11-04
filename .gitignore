@@ -1,0 +1,17 @@
+/acserver
+/acserver-rs
+/.tools/
+*.exe
+/results/
+/cfg/results/
+/loadtest
+kunosserverfiles
+*.pcap
+*.log
+assetto-server-linux-x64/
+SRP 0.9.3/
+SRP_Car_Pack_3.6/
+shutoko_revival_project_094_ptb1/
+newest_fast_lane.aip
+logs/
+logsss.txt

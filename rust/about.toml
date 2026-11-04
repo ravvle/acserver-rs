@@ -1,0 +1,30 @@
+# cargo-about: THIRD_PARTY_LICENSES lists every crate linked into acserver-rs on
+# any release target. Regenerate after changing dependencies:
+#   cd rust && cargo about generate about.hbs -o ../THIRD_PARTY_LICENSES
+accepted = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Unicode-3.0",
+    "Zlib",
+    "CDLA-Permissive-2.0",
+    "MPL-2.0",
+    "0BSD",
+    "Unlicense",
+]
+targets = [
+    "x86_64-unknown-linux-musl",
+    "aarch64-unknown-linux-musl",
+    "armv7-unknown-linux-musleabihf",
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+]
+ignore-dev-dependencies = true
+ignore-build-dependencies = true
+# acserver-rs itself is AGPL-3.0-or-later (LICENSE), not a third party.
+private = { ignore = true }

@@ -1,0 +1,30 @@
+# /etc/sysconfig/acserver-rs-<instance> — per-instance overrides for
+# acserver-rs@<instance>.service. Every value is optional; the template ships
+# working, convention-based defaults keyed on the instance name.
+#
+# Install one per instance, e.g. for `acserver-rs@dtm`:
+#   sudo install -m 0644 deploy/acserver-rs-instance.sysconfig /etc/sysconfig/acserver-rs-dtm
+#
+# Defaults (with %i = the instance name) are:
+#   ACSERVER_CFG=/var/lib/acserver-rs/cfg/server_cfg_%i.ini
+#   ACSERVER_ENTRY=/var/lib/acserver-rs/cfg/entry_list_%i.ini
+#   ACSERVER_CONTENT_FLAG=--content /var/lib/acserver-rs/content
+# so you only need this file to deviate from that naming.
+
+# Server config file for this instance (copy cfg/server_cfg.ini to this name).
+#ACSERVER_CFG=/var/lib/acserver-rs/cfg/server_cfg_dtm.ini
+
+# Entry list file for this instance (copy cfg/entry_list.ini to this name).
+#ACSERVER_ENTRY=/var/lib/acserver-rs/cfg/entry_list_dtm.ini
+
+# Optional per-instance extra_cfg.yml. Without this both instances share
+# /var/lib/acserver-rs/cfg/extra_cfg.yml (the default next to the server config).
+#ACSERVER_EXTRA_FLAG=--extra /var/lib/acserver-rs/cfg/extra_cfg_dtm.yml
+
+# Checksum verification against an AC "content" directory. Set empty to run
+# without file verification.
+#ACSERVER_CONTENT_FLAG=--content /var/lib/acserver-rs/content
+#ACSERVER_CONTENT_FLAG=
+
+# Verbose logging.
+#ACSERVER_DEBUG=--debug

@@ -1,0 +1,27 @@
+# Sample Shutoko Revival Project freeroam settings (cfg/srp/README.md).
+# Keys and defaults are AssettoServer's; see README "extra_cfg.yml".
+
+EnableServerDetails: true
+ServerDescription: "Shutoko Revival Project freeroam with AI traffic"
+
+# CSP is on by default; SRP is meant to be driven with it.
+EnableCSP: true
+EnableClientMessages: true
+
+# AI traffic on main_layout's ai/fast_lane.aip. Needs --content and
+# PICKUP_MODE_ENABLED=1; the AI=fixed slots in entry_list.ini drive it.
+EnableAi: true
+AiParams:
+  MaxSpeedKph: 90
+  RightLaneOffsetKph: 10
+  AiPerPlayerTargetCount: 8
+  MaxAiTargetCount: 200
+  TrafficDensity: 1.0
+  TwoWayTraffic: false
+
+# Freeroam housekeeping.
+EnableAntiAfk: true
+MaxAfkTimeMinutes: 10
+AfkKickBehavior: MinimumSpeed
+MaxPing: 400
+MaxPingSeconds: 10
