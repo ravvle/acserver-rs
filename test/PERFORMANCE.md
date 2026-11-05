@@ -81,6 +81,39 @@ runs a field of any other size in place of the three.
 - Measures the same as `TestPerformanceSRP`; the race CPU figure runs from
   the green light to the end of the cool-down.
 
+## Relay latency (`TestPerformanceLatency`)
+
+How long each server takes to pass a car's position on: from one client
+writing its `0x46` to another client's socket receiving the relayed copy
+(`0x46`, or an entry of a `0x48`). Fields of 2, 16, 32 and 64 players drive
+the race simulation's circuit, with the same targets as the other tests.
+Each run is about 130 s:
+
+```sh
+cd test && RUN_PERF_LATENCY=1 ASSETTOSERVER_DIR=/path/to/assettoserver go test . \
+  -run '^TestPerformanceLatency$' -v -count=1 -timeout=60m
+```
+
+`LATENCY_PLAYERS=<n>` runs one field in place of the four;
+`LATENCY_DURATION` (default `90s`) is the measured window from the green
+light.
+
+- Every client is in the test process, so sending and receiving share one
+  clock, and no clock sync is needed. The send time is read just before the
+  write. The receive time is the kernel's (`SO_TIMESTAMPNS`), so the harness's
+  own scheduling under load stays out of the figure. The test is Linux-only.
+- A relayed update is matched to its send by the sender's session id and
+  `PakSequenceId`. Each receiver times only the first copy of each update;
+  later copies count as `repeats`.
+- **Delivered** is the share of updates that reached each other car. The rest
+  were merged (two in one relay pass), thinned (bandwidth optimizer, network
+  bubble) or lost. A server cannot look fast by dropping updates.
+- Latency is reported overall and by distance between the two cars when the
+  update arrives, in `TestPerformanceRaceSim`'s bands.
+- The `floor` subtest sends the same datagrams through a trivial relay inside
+  the test process (one read, one write), timed the same way. That is the
+  harness's and the loopback's own share.
+
 ## Results
 
 Full test and performance run on 2026-11-04 at commit `e35bb01` (clean
@@ -233,6 +266,59 @@ the same packets as vanilla's.
   false for every race session (only practice and qualifying end, on time),
   and the finish it records per lap (`HasCompletedLastLap`, `EndTime`) is
   never read. AssettoServer also sends `0x54` (sun angle) every second.
+
+### Relay latency, 2 to 64 players (`TestPerformanceLatency`)
+
+Run on 2026-11-05 at commit `cfcb206` plus this test, on the same host and
+servers, under `systemd-inhibit`. `CLIENT_SEND_INTERVAL_HZ=18`,
+`SLEEP_TIME=1`, a 90 s window from the green light. Every player joined and
+none dropped, on every server. Latencies in ms. *CPU* is the server's over
+the window.
+
+**Floor** (the in-process relay, 540 samples): mean 0.11, p50 0.10, p99 0.24,
+max 1.42.
+
+| Players | Server | CPU | Mean | p50 | p90 | p99 | p99.9 | Max | Delivered |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 2 | Vanilla | 7.4% | 0.72 | 0.74 | 1.13 | 1.32 | 1.57 | 3.75 | 100% |
+| 2 | Rust | 1.2% | 0.81 | 0.87 | 1.14 | 1.29 | 1.47 | 1.98 | 100% |
+| 2 | AssettoServer | 0.7% | 27.9 | 28.5 | 49.7 | 54.5 | 55.4 | 55.7 | 99.9% |
+| 16 | Vanilla | 13.1% | 0.73 | 0.54 | 1.40 | 1.65 | 1.85 | 4.38 | 100% |
+| 16 | Rust | 3.9% | 0.91 | 1.09 | 1.26 | 1.44 | 1.59 | 3.38 | 99.2% |
+| 16 | AssettoServer | 4.1% | 27.1 | 27.1 | 49.2 | 54.5 | 55.5 | 55.8 | 99.9% |
+| 32 | Vanilla | 29.3% | 0.86 | 0.61 | 1.76 | 2.27 | 2.71 | 4.64 | 100% |
+| 32 | Rust | 6.0% | 0.83 | 1.08 | 1.32 | 1.59 | 1.94 | 55.9 | 96.4% |
+| 32 | AssettoServer | 10.9% | 27.2 | 27.2 | 49.0 | 54.5 | 55.4 | 56.7 | 99.3% |
+| 64 | Vanilla | 78.9% | 3.56 | 3.26 | 6.42 | 9.74 | 16.8 | 34.2 | 100% |
+| 64 | Rust | 13.3% | 0.97 | 1.13 | 1.73 | 2.29 | 2.67 | 35.3 | 75.0% |
+| 64 | AssettoServer | 24.6% | 26.8 | 26.6 | 48.6 | 54.4 | 55.4 | 57.9 | 98.1% |
+
+Rust by distance band (p50 / p99 in ms, delivered). Vanilla and AssettoServer
+add the same latency in every band:
+
+| Players | Under 100 m | 100–500 m | Over 500 m |
+|---:|---|---|---|
+| 16 | 1.09 / 1.44, 100% | 1.06 / 1.39, 45% | none |
+| 32 | 1.08 / 1.58, 100% | 0.96 / 1.52, 31% | 48.2 / 50.4, 20% (801 samples) |
+| 64 | 1.13 / 2.30, 99.7% | 1.10 / 2.24, 25% | 32.9 / 34.6, 15% (6 samples) |
+
+- **Vanilla and Rust relay within about 1 ms** up to 32 players: one
+  `SLEEP_TIME` relay pass. At 64, vanilla's single main loop runs at 79% CPU,
+  and its passes stretch to a 3.3 ms median and a 9.7 ms p99. Rust stays at
+  a 1.1 ms median and a 2.3 ms p99.
+- **AssettoServer adds 27 ms on average** at every field size, spread evenly
+  from 0 to 55 ms. It relays on a fixed tick of `CLIENT_SEND_INTERVAL_HZ`
+  (docs/03 `0x46`), so an update waits for the next tick. It also repeats an
+  update on a tick with nothing newer (`repeats`: 198 at 16 players, 6,373
+  at 64).
+- **Rust's thinning lowers the rate, not the freshness**: 100–500 m cars
+  get a quarter to a half of their updates, each still relayed in about 1 ms.
+  Cars outside the 500 m bubble are held for the tick's `0x48`
+  (`BatchFarPositions`), so they wait up to one tick (30–50 ms). That is
+  where Rust's maximum at 32 and 64 players comes from.
+- Delivered can read slightly over 100% within a band. The band is judged
+  when an update is sent and again when it arrives, and a pair can cross a
+  boundary in between.
 
 ### Caveats
 

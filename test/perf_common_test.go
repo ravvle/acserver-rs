@@ -192,3 +192,49 @@ type perfClient struct {
 	udp       net.Conn
 	sessionID uint8
 }
+
+// perfTarget is one server a performance test runs: the original acServer,
+// ours or AssettoServer.
+type perfTarget struct {
+	label, bin, install string
+	// extra is the target's extra_cfg.yml.
+	extra string
+	args  func(root, cfgDir string) []string
+}
+
+// perfTargets lists the servers PERF_TARGETS selects among those available:
+// vanilla when a reference install is found, ours, and AssettoServer from
+// ASSETTOSERVER_DIR. extra goes into ours' and AssettoServer's extra_cfg.yml;
+// withContent passes ours the run's root as --content.
+func perfTargets(t *testing.T, extra string, withContent bool) []perfTarget {
+	t.Helper()
+	wanted := func(label string) bool {
+		list := os.Getenv("PERF_TARGETS")
+		return list == "" || strings.Contains(","+list+",", ","+label+",")
+	}
+	var targets []perfTarget
+	if ref := referenceBinary(); ref != "" && wanted("vanilla") {
+		targets = append(targets, perfTarget{label: "vanilla", bin: ref, install: referenceInstall(),
+			args: func(string, string) []string { return referenceArgs() }})
+	}
+	if wanted("ours") {
+		targets = append(targets, perfTarget{label: "ours", bin: serverBinary(t), extra: extra,
+			args: func(root, cfgDir string) []string {
+				if !withContent {
+					root = ""
+				}
+				return []string{"--cfg", cfgDir, "--content", root}
+			}})
+	}
+	if dir := os.Getenv("ASSETTOSERVER_DIR"); dir != "" && wanted("assettoserver") {
+		abs, err := filepath.Abs(dir)
+		require.NoError(t, err)
+		targets = append(targets, perfTarget{label: "assettoserver", bin: filepath.Join(abs, "AssettoServer"), install: abs,
+			args:  func(string, string) []string { return nil },
+			extra: "IgnoreConfigurationErrors:\n  MissingCarChecksums: true\n  MissingTrackParams: true\n" + extra})
+	}
+	if len(targets) == 0 {
+		t.Skip("no target selected by PERF_TARGETS")
+	}
+	return targets
+}

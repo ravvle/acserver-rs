@@ -103,33 +103,7 @@ func TestPerformanceRaceSim(t *testing.T) {
 		fields = []int{srpEnvInt("RACESIM_PLAYERS", 32)}
 	}
 	laps := srpEnvInt("RACESIM_LAPS", 3)
-	wanted := func(label string) bool {
-		list := os.Getenv("PERF_TARGETS")
-		return list == "" || strings.Contains(","+list+",", ","+label+",")
-	}
-	type target struct {
-		label, bin, install, extra string
-		args                       func(root, cfgDir string) []string
-	}
-	var targets []target
-	if ref := referenceBinary(); ref != "" && wanted("vanilla") {
-		targets = append(targets, target{label: "vanilla", bin: ref, install: referenceInstall(),
-			args: func(string, string) []string { return referenceArgs() }})
-	}
-	if wanted("ours") {
-		targets = append(targets, target{label: "ours", bin: serverBinary(t),
-			args: func(root, cfgDir string) []string { return []string{"--cfg", cfgDir, "--content", ""} }})
-	}
-	if dir := os.Getenv("ASSETTOSERVER_DIR"); dir != "" && wanted("assettoserver") {
-		abs, err := filepath.Abs(dir)
-		require.NoError(t, err)
-		targets = append(targets, target{label: "assettoserver", bin: filepath.Join(abs, "AssettoServer"), install: abs,
-			args:  func(string, string) []string { return nil },
-			extra: "IgnoreConfigurationErrors:\n  MissingCarChecksums: true\n  MissingTrackParams: true\n"})
-	}
-	if len(targets) == 0 {
-		t.Skip("no target selected by PERF_TARGETS")
-	}
+	targets := perfTargets(t, "", false)
 
 	track := newRaceSimTrack()
 	t.Logf("track: %.0f m, a clean lap %.1f s", track.length, track.lapTime())

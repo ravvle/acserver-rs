@@ -196,6 +196,12 @@ steps the session, sleeps `SLEEP_TIME` ms, then relays each flagged car's
 
 `CLIENT_SEND_INTERVAL_HZ` only tells clients how often to send (`0x3E`).
 
+`[AS]` AssettoServer relays on a fixed tick of `CLIENT_SEND_INTERVAL_HZ`
+instead, sending each car's latest status once per tick. A position waits
+for the next tick: measured on 0.0.54 at 18 Hz, relay delays spread evenly
+from 0 to 55 ms (mean 27 ms), against under 2 ms for vanilla. A tick with no
+newer update from a car can repeat its last one.
+
 | Field | Type |
 |---|---|
 | SessionId | `u8` |
