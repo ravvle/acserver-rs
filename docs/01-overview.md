@@ -48,6 +48,13 @@ All values are **little-endian** and structures are **packed** (no padding).
 For `string*` the length counts bytes; for `wstring*` it counts characters,
 each 4 bytes on the wire.
 
+**Characters outside the basic plane.** The game without CSP fills each
+4-byte cell with one UTF-16 unit, so an emoji arrives as its two surrogates.
+Vanilla decodes each surrogate cell on its own, as U+FFFD: a chat line `x😀`
+written that way is relayed as `78 FFFD FFFD`, and a name written that way
+reaches `0x5A` as `x` and two UTF-8 replacement characters (measured on
+v1.15). `[CSP]` writes the code point in one cell (doc 4).
+
 ## 1.3 Framing
 
 **TCP.** Every packet in both directions is:

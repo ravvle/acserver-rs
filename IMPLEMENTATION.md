@@ -159,7 +159,11 @@ logins when there is no admin password.
   true/false, the pit window non-negative, and wind directions 0 to 360. An
   empty value still means the default. The error names the key and the value.
   `IDLE_MODE` and `AI_LEVEL` are ignored.
-- `SPECTATOR_MODE=1` is accepted (vanilla refuses to start).
+- `SPECTATOR_MODE=1` is accepted (vanilla refuses to start). The slot is
+  marked in `0x40` but still has a row in `0x4A`, `0x49` and `0x4B`, while the
+  game counts only the cars that are not spectators, so it misreads them: with
+  one spectator slot it reads `0x4A`'s StartTime one byte early
+  (`TestSpectatorSlot`).
 - There is no Steam session-ticket validation.
 
 ## AssettoServer features (doc 9)

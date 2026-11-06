@@ -18,6 +18,7 @@ cd test && go test . -run TestCompareWithReference -v -timeout 30m
 |---|---|
 | `TestCompareWithReference` | Every probe against ours and the reference, diffed. Skipped without an install |
 | `TestCompareSelfConsistent` | Every probe against two of our servers. Checks the decoders and masking; always runs |
+| `TestSpectatorSlot` | With a `SPECTATOR_MODE=1` slot: the reference must refuse to start; ours starts, and a `0x4A` read as the game reads it misplaces StartTime |
 | `TestExt*` | End-to-end tests of the AssettoServer features (README "Configuration"): custom updates, WeatherFX, server scripts and `AS_ApiKey`, AI traffic on a generated track, user groups with the extra admin commands, the automatic kicks, the network bubble and far-car `0x48`s, AI paint and debug events, six of the built-in plugins, live configuration, and (with `AI_SPLINE_AIP` and `AI_SPLINE_TRACK`) traffic on a real AI package |
 
 The tests build `rust/` with `cargo build --release` once per run, unless
@@ -37,6 +38,7 @@ like a hang but isn't one.
 | `AC_REFERENCE_DIR` | `kunosserverfiles/` | Install whose data dirs are symlinked beside the templated config |
 | `AC_REFERENCE_ARGS` | — | Extra flags for the reference, split on whitespace |
 | `AC_CONTENT` | `kunosserverfiles/` | `--content` for our server. It must be the install **root** (holding `content/` and `system/`) so both servers produce the same checksum paths |
+| `PROBE_DUMP` | — | When set, logs both captures of every reference probe, one packet per line |
 
 **The install is never modified.** Each run writes a port-rebound copy of `./cfg`
 to a temp dir, symlinks the install's data dirs next to it, and gives the

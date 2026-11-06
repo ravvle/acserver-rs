@@ -257,7 +257,9 @@ Honest gaps, not doc errors. Keep this list current.
 - **Rate and resource limits** (tabled in `README.md`) are hard-coded and unprobed,
   because observing them would take a flood.
 - `SPECTATOR_MODE=1` is accepted, but vanilla refuses to start with it, so there
-  is no reference behaviour.
+  is no reference behaviour. The game counts only the cars that are not
+  spectators in `0x4A`, `0x49` and `0x4B`, so a spectator slot makes it misread
+  them (`TestSpectatorSlot`).
 - RCON and ACSP `AdminCommand` accept a superset of the chat commands
   (`kick` by id, `ban`, `say`).
 - No Steam session-ticket validation.

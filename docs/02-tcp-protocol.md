@@ -217,6 +217,9 @@ Then `Count` events:
 Collisions go only to the plugin (doc 6), never to other clients, and may arrive
 up to ~5 s late. A jump start is re-broadcast as `0x82` (§2.2).
 
+The count is required for a jump start too. A bare `0x82 0x0C` is ignored:
+nothing is relayed and the connection stays up (measured on v1.15).
+
 ### 0xAB — Extended `[CSP]`
 
 Only CSP clients send this, and a Kunos server can ignore it. Subtypes: `0x00`

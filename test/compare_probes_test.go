@@ -328,6 +328,12 @@ func probes() []probe {
 		{name: "UnicodeJoinBroadcast", run: probeUnicodeJoinBroadcast},
 		{name: "UnicodeChat", run: probeUnicodeChat},
 		{name: "ChatMaxLength", run: probeChatMaxLength},
+		{name: "ChatSurrogatePair", run: probeChatSurrogates},
+		{name: "NameSurrogatePair", run: probeNameSurrogates},
+
+		// The client's bare jump start (compare_client_probes_test.go).
+		{name: "RelayJumpStartBare", run: probeJumpStartBare},
+		{name: "EchoJumpStartBare", run: selfRelayProbe(jumpStartBare)},
 
 		// Admission and per-car state.
 		{name: "HandshakeAltRules", run: probeHandshake, cfg: cfgAltRules},
@@ -5269,6 +5275,9 @@ func TestCompareWithReference(t *testing.T) {
 			// safe).
 			ourCap := withTarget(t, startOurTarget(t, root, cfgDir, p), pr.run)
 			refCap := withTarget(t, startRefTarget(t, root, p), pr.run)
+			if os.Getenv("PROBE_DUMP") != "" {
+				t.Logf("ours:\n%s\nreference:\n%s", dumpCapture(ourCap), dumpCapture(refCap))
+			}
 
 			if pr.dev != nil {
 				checkDeviation(t, pr.name, pr.dev, ourCap, refCap)
@@ -5277,6 +5286,19 @@ func TestCompareWithReference(t *testing.T) {
 			compareCaptures(t, pr.name, ourCap, refCap)
 		})
 	}
+}
+
+// dumpCapture renders a capture one packet per line, for PROBE_DUMP.
+func dumpCapture(c capture) string {
+	var b strings.Builder
+	for _, p := range c.packets {
+		b.WriteString("  " + p.label)
+		for _, f := range p.fields {
+			fmt.Fprintf(&b, " %s=%q", f.name, f.value)
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 // runProbe starts a fresh server of ours on free ports, runs the probe, and
