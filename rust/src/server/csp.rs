@@ -182,11 +182,13 @@ impl Server {
         Some(format!("CSP build {min} or newer is required."))
     }
 
-    /// The ready CSP clients other than the sender.
-    fn csp_receivers(&self, except: u8) -> Vec<Arc<Client>> {
+    /// The ready CSP clients. A client message goes to its sender too, as
+    /// AssettoServer relays it: CSP scripts receive their own messages
+    /// (docs/04 §4.3).
+    fn csp_receivers(&self) -> Vec<Arc<Client>> {
         self.broadcast_clients()
             .into_iter()
-            .filter(|c| c.is_csp() && c.session_id() != except)
+            .filter(|c| c.is_csp())
             .collect()
     }
 
@@ -238,8 +240,8 @@ impl Server {
     }
 
     /// Routes one CSP client message (docs/04 §4.3). Anything without special
-    /// handling goes to every other CSP client on the transport it arrived
-    /// on, stamped with the sender's id.
+    /// handling goes to every CSP client, the sender included, on the
+    /// transport it arrived on, stamped with the sender's id.
     fn handle_client_message(&self, client: &Arc<Client>, r: &mut Reader, udp: bool) {
         if r.remaining() < 2 || r.remaining() > MAX_CSP_MESSAGE {
             return;
@@ -269,7 +271,7 @@ impl Server {
             }
             proto::CSP_LUA_TARGETED => {
                 if let Some(&target) = payload.first() {
-                    let to = self.csp_target(target, id);
+                    let to = self.csp_target(target);
                     self.send_csp_message(to.as_deref(), udp, id, kind, &payload);
                 }
             }
@@ -279,7 +281,7 @@ impl Server {
                 }
             }
             _ => {
-                let receivers = self.csp_receivers(id);
+                let receivers = self.csp_receivers();
                 self.broadcast_csp_message(&receivers, udp, id, kind, &payload);
             }
         }
@@ -298,7 +300,7 @@ impl Server {
             return;
         }
         tracing::info!(by = client.name(), target = car, "csp admin penalty");
-        let to = self.csp_target(car as u8, client.session_id());
+        let to = self.csp_target(car as u8);
         self.send_csp_message(
             to.as_deref(),
             false,
@@ -308,13 +310,9 @@ impl Server {
         );
     }
 
-    /// The ready CSP client in slot `id` other than `from`.
-    fn csp_target(&self, id: u8, from: u8) -> Option<Arc<Client>> {
-        let car = self.car_by_id(id)?;
-        if id == from {
-            return None;
-        }
-        let target = car.client()?;
+    /// The ready CSP client in slot `id`, the sender's own included.
+    fn csp_target(&self, id: u8) -> Option<Arc<Client>> {
+        let target = self.car_by_id(id)?.client()?;
         (target.ready() && target.is_csp()).then_some(target)
     }
 
@@ -345,7 +343,7 @@ impl Server {
         };
         let data = r.remaining_bytes();
         if kind == proto::CSP_LUA_RANGED_TARGET {
-            if let Some(t) = self.csp_target(target, id)
+            if let Some(t) = self.csp_target(target)
                 && near(&t)
             {
                 let mut body = Vec::with_capacity(1 + data.len());
@@ -356,7 +354,7 @@ impl Server {
             return;
         }
         let receivers: Vec<Arc<Client>> = self
-            .csp_receivers(id)
+            .csp_receivers()
             .into_iter()
             .filter(|t| near(t))
             .collect();
@@ -468,7 +466,7 @@ impl Server {
         w.u8(id);
         w.bool(!visible); // 0 visible, 1 invisible
         let frame = wire::frame_tcp(w.bytes());
-        for client in self.csp_receivers(proto::SERVER_SESSION_ID) {
+        for client in self.csp_receivers() {
             self.queue_frame(&client, frame.clone());
         }
     }

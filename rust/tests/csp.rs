@@ -99,6 +99,54 @@ fn client_message_relay() {
     }
 }
 
+/// A client message reaches its sender too, as AssettoServer relays it and
+/// the CSP SDK says ("your own messages will arrive to you as well").
+#[test]
+fn client_message_reaches_sender() {
+    let srv = start(csp_on);
+    let mut a = join_client_features(&srv, "A", CSP_FEATURES);
+
+    a.conn
+        .send(&client_message(proto::EXT_TCP_CLIENT_MESSAGE, 15000, &[1]));
+    let pkt = a.conn.await_packet(is_msg(15000));
+    assert_eq!(pkt[2], a.id, "stamped with the sender");
+
+    // Targeted at the sender itself: delivered.
+    a.conn.send(&client_message(
+        proto::EXT_TCP_CLIENT_MESSAGE,
+        proto::CSP_LUA_TARGETED,
+        &[a.id, 7, 0, 0, 0],
+    ));
+    let pkt = a.conn.await_packet(is_msg(proto::CSP_LUA_TARGETED));
+    assert_eq!(pkt[5..], [a.id, 7, 0, 0, 0]);
+
+    // UDP: the same.
+    a.udp
+        .send(&client_message(proto::EXT_UDP_CLIENT_MESSAGE, 15000, &[9]))
+        .unwrap();
+    a.udp
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    let mut buf = [0u8; 1500];
+    loop {
+        let n = a.udp.recv(&mut buf).expect("udp echo never arrived");
+        if buf[0] == proto::EXTENDED {
+            assert_eq!(
+                &buf[..n],
+                [
+                    proto::EXTENDED,
+                    proto::EXT_UDP_CLIENT_MESSAGE,
+                    a.id,
+                    0x98,
+                    0x3A,
+                    9
+                ]
+            );
+            break;
+        }
+    }
+}
+
 #[test]
 fn lua_targeted_and_admin_penalty() {
     let srv = start(|cfg| {

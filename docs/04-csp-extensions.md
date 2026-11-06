@@ -172,7 +172,11 @@ Server dispatch rules:
   3 SlowDown, 4 BlackFlag, 5 BlackFlagRelease — only 1 and 2 known to work), `u16
   carIndex`, `i32 penaltyArgument`, `cstr<64> message`, `u64 signature`.
 - **Any other type**: broadcast verbatim to all clients (same transport it arrived on),
-  with the sender's session ID.
+  with the sender's session ID. **The sender is included**: CSP scripts receive their
+  own messages (SDK: "your own messages will arrive to you as well unless you were to
+  use `target` with ID different from your session ID"), and AssettoServer echoes them.
+  The same holds for Lua messages (§4.4), ranged ones included, and a message targeted
+  at the sender's own session ID is delivered to it.
 
 ### CSP handshake
 
