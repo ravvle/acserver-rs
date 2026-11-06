@@ -3,6 +3,18 @@
 Keep a section short: what an operator or player would notice, a few bullets at
 most. The reasoning behind a change belongs in its commit message, not here.
 
+## v1.0.1
+
+- **CSP clients get the server's features.** `/api/details` is always served
+  and lists `CLIENT_MESSAGES`, `CLIENT_UDP_MESSAGES` and `EMOJI`, so CSP
+  scripts exchange events directly (UDP included) instead of through chat,
+  and emoji in names and chat no longer turn into `?`.
+- **`EnableServerDetails` is on by default,** as in AssettoServer: the server
+  name gets its `ℹ<port>` suffix, so Content Manager finds the details page
+  from the lobby list.
+- **CSP script messages reach their sender too,** as CSP scripts expect.
+- **Distant AI cars move more smoothly** when their updates are thinned out.
+
 ## v1.0.0
 
 First release of acserver-rs, a drop-in replacement for the Kunos `acServer`
