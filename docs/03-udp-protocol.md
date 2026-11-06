@@ -305,9 +305,14 @@ so sees server clock.
 
 | Mask | Meaning |
 |---|---|
+| `0x0000_0001`–`0x0000_0008` | tyre skidding: LF, RF, LR, RR |
 | `0x0000_0010` | brake lights |
 | `0x0000_0020` | lights |
 | `0x0000_0040` | horn |
+| `0x0000_0080` | car has a penalty |
+| `0x0000_0100` | headlight flash |
+| `0x0000_0200` | KERS charging |
+| `0x0000_0400` | DRS open |
 | `0x0000_0800` | indicating left |
 | `0x0000_1000` | indicating right |
 | `0x0000_2000` | hazards |
@@ -316,4 +321,16 @@ so sees server clock.
 | `0x0040_0000` | wiper level 2 |
 | `0x0060_0000` | wiper level 3 |
 
-Other bits are passed through untouched.
+Bits `0x1`–`0x400` are what the game itself sets (the game client's code as
+ported by rustyAC); the rest are `[CSP]`'s. Other bits are passed through
+untouched.
+
+**Sequence numbers.** The game takes a car's update only if its
+`PakSequenceId` is newer than the last one's (greater, or below 10 after one
+above `0xF0`), or its timestamp is more than a second away. It then paces the
+timestamp: with a gap of under 5 sequence numbers, it pulls the timestamp 70 %
+of the way towards `gap × send interval` past the previous one. A sender that
+thins a car's updates must therefore still count the ones it skips. `[AS]`
+AssettoServer numbers an AI car's updates per receiver and counts only those
+it sends, so a car thinned to every fifth update reads as one step apart
+(game client code as ported by rustyAC, not measured).

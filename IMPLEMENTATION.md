@@ -182,6 +182,9 @@ The features follow AssettoServer 0.0.54, with these differences:
   The other `AS_*` Lua events are not implemented.
 - **AI positions** are ranked with players' cars (above) instead of sent
   every tick inside the bubble.
+- **AI sequence numbers** count the updates a receiver was skipped too, so
+  the game paces a thinned AI car by the time that passed (docs/03 §3.3).
+  AssettoServer counts only the updates it sends.
 - **`CLIENT_MESSAGES`** is advertised whenever `EnableClientMessages` is on,
   but not as mandatory: it is on by default, and a player without CSP still
   joins (docs/04 §4.6). `CLIENT_UDP_MESSAGES` follows

@@ -594,11 +594,14 @@ impl Server {
                     slot.last_seen[to] = seen;
                     self.send_car_color(&receiver.client, slot_id as u8, state.color);
                 }
+                // The number advances on a skipped update too, so the game
+                // reads the gap as the time that passed: it paces a state's
+                // timestamp by gap x send interval.
+                let sequence = slot.sequence[to];
+                slot.sequence[to] = sequence.wrapping_add(1);
                 if receiver.client.skip_position(slot_id as u8) {
                     continue;
                 }
-                let sequence = slot.sequence[to];
-                slot.sequence[to] = sequence.wrapping_add(1);
                 let pos = PositionUpdate {
                     sequence_id: sequence,
                     timestamp: 0,
