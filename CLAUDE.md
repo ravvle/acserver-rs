@@ -291,7 +291,10 @@ tier below the optimizer's lowest, every fifth update, and `BatchFarPositions`
 drops their `Gas` and `PerformanceDelta`); the bandwidth optimizer is always
 on, ranks AI and players' cars as one list in tiers of 7 once per
 `CLIENT_SEND_INTERVAL_HZ` tick (vanilla: every relay pass), and never thins a
-car within 100 m; and `EnableCustomUpdate` defaults to on. These are design
+car within 100 m; and `EnableCustomUpdate` defaults to on. `EnableServerDetails`
+is on too, as in AssettoServer: it only adds the `ℹ<port>` name suffix
+(`/api/details` is always served, so CSP gets the feature list), and the
+comparison suite strips the suffix from `/INFO`. These are design
 decisions, tested end to end by `TestExt*` in `test/extensions_test.go`.
 
 The repository is AGPL-3.0-or-later, the same licence as AssettoServer, so

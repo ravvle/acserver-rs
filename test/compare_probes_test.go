@@ -5010,6 +5010,9 @@ var infoVolatile = map[string]bool{
 	"timestamp": true, "timeleft": true, "ip": true,
 }
 
+// infoSuffix is EnableServerDetails' " ℹ<port>" name suffix.
+var infoSuffix = regexp.MustCompile(` ℹ\d+$`)
+
 // decodeInfoJSON flattens the /INFO body into sorted fields, masking volatile
 // keys so only structural / configured differences remain.
 func decodeInfoJSON(body map[string]any) packet {
@@ -5023,6 +5026,12 @@ func decodeInfoJSON(body map[string]any) packet {
 	for _, k := range keys {
 		if infoVolatile[k] {
 			p.fields = append(p.fields, field{k, volatile})
+			continue
+		}
+		// EnableServerDetails (on by default) adds " ℹ<http port>" to the
+		// name; the port differs per run and the suffix is cosmetic.
+		if name, ok := body[k].(string); ok && k == "name" {
+			p.fields = append(p.fields, field{k, infoSuffix.ReplaceAllString(name, "")})
 			continue
 		}
 		p.fields = append(p.fields, field{k, fmt.Sprintf("%v", body[k])})

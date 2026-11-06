@@ -185,7 +185,9 @@ character 'o' in literal null (expecting 'u')`). In v1.15 the settings are then
 ## 5.3 `GET /api/details?guid=<guid>` `[CM]`
 
 Defined by ac-server-wrapper (Content Manager's server wrapper). AssettoServer
-serves it behind `EnableServerDetails`. The body is every
+always serves it; `EnableServerDetails` (default on) only adds the `ℹ<httpPort>`
+name suffix (below). CSP reads the server's `features` from it when the launcher
+passed none (doc 4 §4.6). The body is every
 `/INFO` field plus:
 
 ```jsonc

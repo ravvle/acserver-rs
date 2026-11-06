@@ -690,6 +690,10 @@ fn extra_cfg_defaults_and_overrides() {
     assert_eq!(extra.country, ["Germany", "DE"]);
     assert_eq!(extra.live.chat_rate_limit_ms, 1000);
     assert!(extra.validate_position_updates, "untouched default");
+    assert!(
+        extra.enable_server_details,
+        "on by default, as AssettoServer"
+    );
 
     write(&dir, "extra_cfg.yml", "");
     assert_eq!(

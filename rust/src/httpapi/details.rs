@@ -11,7 +11,7 @@ use axum::Json;
 use axum::response::{IntoResponse, Response};
 
 use super::content::{ContentManifest, build_content};
-use super::{InfoResponse, build_info, is_admin_guid, is_entry_list, not_found};
+use super::{InfoResponse, build_info, is_admin_guid, is_entry_list};
 use crate::server::Server;
 
 /// Fills /api/details' display-only poweredBy field.
@@ -96,11 +96,10 @@ struct Details {
     wrapped_port: u16,
 }
 
-/// GET /api/details, or 404 without EnableServerDetails.
+/// GET /api/details. Always served, as AssettoServer serves it: CSP reads
+/// the server's features here (docs/04 §4.6). EnableServerDetails only adds
+/// the ℹ<port> name suffix.
 pub(super) fn handle_details(server: &Server, query: &HashMap<String, String>) -> Response {
-    if !server.cfg.extra.enable_server_details {
-        return not_found();
-    }
     let guid = query.get("guid").map(String::as_str).unwrap_or("");
     Json(build_details(server, guid)).into_response()
 }

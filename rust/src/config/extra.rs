@@ -13,10 +13,16 @@ use super::ai::AiParams;
 ///
 /// The defaults are vanilla behaviour plus what no vanilla client can
 /// observe: position validation and the CSP extensions, which only ever
-/// reach a client that announced a CSP build.
+/// reach a client that announced a CSP build. The one visible addition is
+/// the server details' `ℹ<port>` name suffix.
 #[derive(Debug, Clone, PartialEq, SmartDefault, Deserialize)]
 #[serde(default, rename_all = "PascalCase")]
 pub struct ExtraConfig {
+    /// Adds the `ℹ<port>` suffix to the server's name in /INFO and the
+    /// lobby, which points Content Manager at /api/details. The page itself
+    /// is always served. On by default, as in AssettoServer: the suffix
+    /// changes only the name players see.
+    #[default = true]
     pub enable_server_details: bool,
     pub server_description: String,
     /// Serves `/content/*` zips built from `--content` and lists them in

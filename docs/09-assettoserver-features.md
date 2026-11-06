@@ -21,7 +21,8 @@ so a replacement can read the same file. Behaviour follows AssettoServer
 | User groups, admin commands | `UserGroups`, `AdminUserGroup`, … | `0x6F`, `0x3B`, chat replies | §9.7 |
 | Live configuration | — | `/api/configuration`, in-game window | §9.8, doc 5 §5.7 |
 | Plugins | `EnablePlugins` | per plugin | §9.9 |
-| Server details, content downloads | `EnableServerDetails` | `/api/details`, `/content/*`, `ℹ<port>` | doc 5 §5.3–5.4 |
+| Server details name suffix | `EnableServerDetails` | `ℹ<port>` (`/api/details` is always served) | doc 5 §5.3 |
+| Content downloads | `EnableContentDownloads` | `/content/*`, `/api/details` `content` | doc 5 §5.4 |
 | RCON | `EnableRcon`, `RconPort` | TCP console | doc 7 |
 
 ## 9.2 Extra options and server scripts

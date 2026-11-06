@@ -5,11 +5,14 @@ mod common;
 use common::*;
 
 /// The CM-only top-level fields are present, and a free slot's driver
-/// strings are "" (never null, docs/05 §5.2/§5.3).
+/// strings are "" (never null, docs/05 §5.2/§5.3). The page is served even
+/// without EnableServerDetails, which only adds the ℹ<port> name suffix.
 #[test]
 fn details_fields() {
-    let srv = start(|cfg| cfg.extra.enable_server_details = true);
+    let srv = start(|cfg| cfg.extra.enable_server_details = false);
     let d = get_json(&format!("{}/api/details?guid=1", srv.base_url()));
+    let name = d["name"].as_str().expect("name");
+    assert!(!name.contains('ℹ'), "no ℹ suffix when off: {name}");
     for key in [
         "wrappedPort",
         "poweredBy",

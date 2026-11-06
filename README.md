@@ -19,7 +19,8 @@ What you get over the original:
 - **AssettoServer's features**, all off unless you switch them on: AI traffic,
   CSP WeatherFX and server scripts, user groups and extra admin commands,
   automatic kicks, live configuration and AssettoServer's bundled plugins, plus
-  Content Manager server details and content downloads and an RCON console.
+  Content Manager content downloads and an RCON console. Content Manager's
+  server details are on, as in AssettoServer.
   Custom Shaders Patch (CSP) messaging and AssettoServer's position handling
   are on by default.
 - **Runs on almost anything.** The original is a 32-bit Intel x86 program.
@@ -212,7 +213,7 @@ carries over.
 | `WriteResultJson` | `true` | Write `results/*.json` |
 | `PlayerLoadingTimeoutMinutes` | `5` | How long a player may take to load before being dropped |
 | `ChatRateLimitMs` | `0` | Drop chat sent this soon after the sender's last message (AssettoServer uses 1000). CSP's chat-encoded data is exempt |
-| `EnableServerDetails` | `false` | Content Manager's server-details page (`/api/details`) and the `ℹ<port>` name suffix |
+| `EnableServerDetails` | `true` | The `ℹ<port>` name suffix that points Content Manager at its server-details page. The page (`/api/details`) is always served, because CSP reads the server's features from it |
 | `ServerDescription` | `""` | Text shown on that page |
 | `EnableContentDownloads` | `false` | Let Content Manager download the cars, skins and track from `--content`, built as zips on first request; password-protected when the server has a password. Content without a model `.kn5` is not offered |
 | `EnableCSP` | `true` | CSP kick message, car visibility, spectating and `CSPExtraOptions` ([docs/04](docs/04-csp-extensions.md)) |
