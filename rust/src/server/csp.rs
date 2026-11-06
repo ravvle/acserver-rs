@@ -107,11 +107,32 @@ pub struct CspFeature {
     pub mandatory: bool,
 }
 
-/// The CSP features an `extra_cfg.yml` turns on, advertised in
-/// /api/details. Only the AssettoServer features are listed, so a default
-/// configuration advertises none, as before.
+/// The CSP features advertised in /api/details: EMOJI always, then the ones
+/// an `extra_cfg.yml` turns on (client messages by default).
+///
+/// EMOJI, as AssettoServer has it: CSP writes a character beyond U+FFFF as
+/// `?` to a server whose list lacks it, and as one wstring cell to one that
+/// has it (docs/04 §4.6). The wire reader takes either.
 pub fn csp_features(extra: &crate::config::ExtraConfig) -> Vec<CspFeature> {
-    let mut features = Vec::new();
+    let mut features = vec![CspFeature {
+        name: "EMOJI",
+        mandatory: false,
+    }];
+    // Without these CSP sends script events as $CSP0: chat lines and has no
+    // UDP events at all (docs/04 §4.6). Not mandatory, unlike AssettoServer:
+    // they are on by default, and a player without CSP must still get in.
+    if extra.enable_client_messages {
+        features.push(CspFeature {
+            name: "CLIENT_MESSAGES",
+            mandatory: false,
+        });
+    }
+    if extra.enable_udp_client_messages {
+        features.push(CspFeature {
+            name: "CLIENT_UDP_MESSAGES",
+            mandatory: false,
+        });
+    }
     if extra.enable_custom_update {
         features.push(CspFeature {
             name: "CUSTOM_UPDATE",

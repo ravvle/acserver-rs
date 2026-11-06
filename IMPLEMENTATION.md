@@ -182,6 +182,10 @@ The features follow AssettoServer 0.0.54, with these differences:
   The other `AS_*` Lua events are not implemented.
 - **AI positions** are ranked with players' cars (above) instead of sent
   every tick inside the bubble.
+- **`CLIENT_MESSAGES`** is advertised whenever `EnableClientMessages` is on,
+  but not as mandatory: it is on by default, and a player without CSP still
+  joins (docs/04 §4.6). `CLIENT_UDP_MESSAGES` follows
+  `EnableUdpClientMessages`, and `EMOJI` is always listed.
 - **ReportPlugin.** `<host>` is `ServerAddress`, else the public IP looked up
   from ip-api.com at start, with `HTTP_PORT`. An upload must come from the
   `X-Car-Index` client's IP (or loopback) with the right key. Replies: `200`

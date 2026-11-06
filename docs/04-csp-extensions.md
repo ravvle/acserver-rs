@@ -292,6 +292,21 @@ behavior: `CUSTOM_UPDATE` enables §4.2 custom updates for that client.
 The full feature list the server requires is also published to the lobby/CM via the HTTP
 API (`Features` arrays, doc 5).
 
+**`CLIENT_MESSAGES` and `CLIENT_UDP_MESSAGES`.** CSP uses the TCP and UDP client
+messages of §4.3 only on a server whose list has these. Without `CLIENT_MESSAGES`,
+script events travel as `$CSP0:` chat lines (§4.5), each under 175 bytes and at
+least 200 ms apart; without `CLIENT_UDP_MESSAGES`, a script asking for a UDP event
+gets the error "UDP messages are not available with this server" (CSP Lua SDK,
+`ac.OnlineEvent`; the mapping from feature to flag is from CSP's client code as
+documented by rustyAC). `[AS]` AssettoServer lists `CLIENT_MESSAGES` as mandatory
+when its client messages are on, which turns away players without CSP.
+
+**`EMOJI`.** The list also tells CSP how to write wide strings. A server whose
+list lacks `EMOJI` gets every character beyond U+FFFF as `?`; one that lists
+it gets the code point in a single cell. With no list at all, CSP assumes
+`EMOJI`. `[AS]` AssettoServer always lists it. (From CSP's client code as
+documented by rustyAC, not measured.)
+
 **WeatherFX and the vanilla server browser.** With WeatherFX on,
 `WEATHERFX_V1` is mandatory. A join from the vanilla in-game server browser
 sends no feature list even when CSP is installed, so it is refused with

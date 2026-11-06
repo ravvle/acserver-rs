@@ -32,6 +32,13 @@ fn details_fields() {
     assert!(d["loadingImageUrl"].is_null());
     assert_eq!(d["extensions"], serde_json::json!({}));
     assert!(d["content"].is_null(), "no content downloads configured");
+    let features = d["features"].as_array().expect("features");
+    for feature in ["EMOJI", "CLIENT_MESSAGES", "CLIENT_UDP_MESSAGES"] {
+        assert!(
+            features.iter().any(|f| f == feature),
+            "{feature} is advertised by default"
+        );
+    }
 
     let cars = d["players"]["Cars"].as_array().expect("players.Cars");
     assert!(!cars.is_empty());

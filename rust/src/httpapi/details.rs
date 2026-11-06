@@ -158,7 +158,7 @@ fn build_details(server: &Server, guid: &str) -> Details {
         current_weather_id: wx.graphics,
         description: cfg.extra.server_description.clone(),
         extensions: Empty {},
-        // The CSP features the AssettoServer options turn on; none by default.
+        // The CSP features: EMOJI, then those the extra options turn on.
         features: crate::server::csp_features(&cfg.extra)
             .iter()
             .map(|f| f.name.to_string())
