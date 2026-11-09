@@ -3,6 +3,15 @@
 Keep a section short: what an operator or player would notice, a few bullets at
 most. The reasoning behind a change belongs in its commit message, not here.
 
+## v1.0.2
+
+- **Non-ASCII team and nation names show correctly** to other players, as
+  with vanilla, instead of turning into `�`.
+- **Editing `entry_list.ini` with pickup mode off no longer confuses
+  connected players.** If a loop back changes the car list, everyone is
+  disconnected so they rejoin with the new list; an edit that leaves the list
+  alone (BoP, for one) keeps them connected.
+
 ## v1.0.1
 
 - **CSP clients get the server's features.** `/api/details` is always served
