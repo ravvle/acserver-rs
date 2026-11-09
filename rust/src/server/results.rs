@@ -45,8 +45,8 @@ fn results_driver(car: &EntryCar) -> Driver {
     let id = car.identity();
     Driver {
         name: id.name,
-        team: id.team,
-        nation: id.nation,
+        team: id.team.to_string(),
+        nation: id.nation.to_string(),
         guid: id.guid,
         guids_list: None,
     }

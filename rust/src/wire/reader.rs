@@ -1,6 +1,6 @@
 use bytes::{Buf as _, TryGetError};
 
-use super::Vec3;
+use super::{Narrow, Vec3};
 
 /// Decodes a payload. A read past the end returns a zero value and sets
 /// `overflowed` instead of panicking, so a handler can read every field and
@@ -147,6 +147,13 @@ impl<'a> Reader<'a> {
         self.utf8(n)
     }
 
+    /// Reads a u8 length prefix (in bytes), then that many bytes, kept as
+    /// they came.
+    pub fn narrow8(&mut self) -> Narrow {
+        let n = self.u8() as usize;
+        Narrow::from_bytes(self.take(n).map(<[u8]>::to_vec).unwrap_or_default())
+    }
+
     /// Reads a u16 byte-length prefix, then that many UTF-8 bytes.
     pub fn string16(&mut self) -> String {
         let n = self.u16() as usize;
@@ -171,8 +178,9 @@ impl<'a> Reader<'a> {
     }
 
     /// Reads `n` bytes as text. Go keeps invalid UTF-8 as raw bytes; a Rust
-    /// `String` cannot, so invalid sequences become U+FFFD. Only a client
-    /// sending malformed text can observe the difference.
+    /// `String` cannot, so invalid sequences become U+FFFD. The game writes
+    /// a 0x3D's team and nation in its code page, so those fields are read
+    /// with `narrow8`, which keeps the bytes.
     fn utf8(&mut self, n: usize) -> String {
         match self.take(n) {
             Some(bytes) => String::from_utf8_lossy(bytes).into_owned(),

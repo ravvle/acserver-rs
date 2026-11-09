@@ -33,8 +33,8 @@ pub struct ClientIdentity {
     pub session_id: u8,
     pub guid: String,
     pub name: String,
-    pub team: String,
-    pub nation: String,
+    pub team: wire::Narrow,
+    pub nation: wire::Narrow,
     pub car_model: String,
 }
 

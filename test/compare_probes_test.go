@@ -330,6 +330,7 @@ func probes() []probe {
 		{name: "ChatMaxLength", run: probeChatMaxLength},
 		{name: "ChatSurrogatePair", run: probeChatSurrogates},
 		{name: "NameSurrogatePair", run: probeNameSurrogates},
+		{name: "Latin1Identity", run: probeLatin1Identity},
 
 		// The client's bare jump start (compare_client_probes_test.go).
 		{name: "RelayJumpStartBare", run: probeJumpStartBare},

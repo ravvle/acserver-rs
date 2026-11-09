@@ -109,6 +109,7 @@ identical.
 | `MaxClientsCap` | `MAX_CLIENTS=1` with free slots left |
 | `KickThenRejoin` / `BanThenRejoin` | rejoin after `/kick_id` and `/ban_id` |
 | `UnicodeName` / `UnicodeJoinBroadcast` | accents, CJK and a non-BMP emoji through `string8` and `wstring8` |
+| `Latin1Identity` | team and nation in the game's code page (Latin-1 bytes) relayed verbatim in `0x5A` and `0x40` |
 
 ### Loading and the first update
 

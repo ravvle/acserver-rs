@@ -60,17 +60,24 @@ A fixed 61-byte payload (62 including the id):
 | PakSequenceId | `u8` | wrapping counter |
 | LastRemoteTimestamp | `u32` | client clock, ms |
 | Position | `vec3` | world |
-| Rotation | `vec3` | Euler, radians |
+| Rotation | `vec3` | Euler angles in radians: heading, pitch, roll |
 | Velocity | `vec3` | m/s |
-| TyreAngularSpeed FL/FR/RL/RR | `4 × u8` | value − 100 |
-| SteerAngle | `u8` | value − 127 |
-| WheelAngle | `u8` | (value − 127) / 2 |
+| TyreAngularSpeed FL/FR/RL/RR | `4 × u8` | logarithmic, below |
+| SteerAngle | `u8` | steering wheel, degrees + 127, clamped to ±127 |
+| WheelAngle | `u8` | front wheel angle, half-degrees + 127, clamped to ±127 |
 | EngineRpm | `u16` | |
 | Gear | `u8` | 0 reverse, 1 neutral, 2 first, … |
 | StatusFlags | `u32` | §3.3 |
-| PerformanceDelta | `i16` | |
-| Gas | `u8` | 0–255 |
+| PerformanceDelta | `i16` | ms |
+| Gas | `u8` | throttle × 255 |
 | NormalizedPosition | `f32` | spline position, 0..1 |
+
+**Wheel speeds.** Each byte holds a wheel's angular speed `w` (rad/s) on a log
+scale: `b = round(log10(|w| + 1) × 20) × sign(w) + 100`, clamped to 0..254
+(−100..154 before the offset). The game writes a wheel turning at 0.1 rad/s or
+less without the log, and decodes `b` as `sign × (10^(|b − 100| / 20) − 1)`.
+So 100 is still, 120 is +9 rad/s and 80 is −9 rad/s (game client code as
+ported by rustyAC). A server that synthesises cars (AI) must encode this way.
 
 Handling:
 

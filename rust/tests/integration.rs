@@ -216,3 +216,53 @@ fn lobby_check_udp() {
     assert_eq!(buf[0], proto::LOBBY_CHECK, "expected 0xC8");
     assert_eq!(Reader::new(&buf[1..n]).u16(), srv.http, "http port");
 }
+
+/// With pickup mode off a loop back re-reads `entry_list.ini`. An edit that
+/// leaves the car list as clients loaded it (only BoP here) keeps its
+/// drivers; one that changes it disconnects them all, since the game never
+/// asks for the list again and reads 0x49, 0x4A and 0x4B one row per car it
+/// loaded (docs/05 §5.2a).
+#[test]
+fn entry_list_reload_keeps_drivers_only_while_the_car_list_holds() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("entry_list.ini");
+    // Pickup mode off admits only listed guids.
+    const GUID: &str = "76561198000777777";
+    let original = std::fs::read_to_string("../cfg/entry_list.ini")
+        .expect("entry list")
+        .replacen("GUID=\n", &format!("GUID={GUID}\n"), 1);
+    std::fs::write(&path, &original).expect("write entry list");
+    let srv = start(|cfg| {
+        cfg.server.pickup_mode_enabled = false;
+        cfg.server.max_clients = 13;
+        cfg.sessions.truncate(1);
+        cfg.entry_list_path = path.clone();
+        cfg.entry_list[0].guid = GUID.into();
+        cfg.entry_list[0].guids = vec![GUID.into()];
+    });
+    let driver = join_guid(&srv, GUID, "Kept", None).expect("join");
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !srv
+        .server
+        .car_by_id(driver.id)
+        .and_then(|c| c.client())
+        .is_some_and(|c| c.ready())
+    {
+        assert!(Instant::now() < deadline, "the driver never became ready");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let car = srv.server.car_by_id(driver.id).expect("slot");
+
+    std::fs::write(&path, original.replace("BALLAST=0", "BALLAST=20")).expect("edit BoP");
+    assert!(srv.server.next_session(), "loop refused");
+    assert!(car.client().is_some(), "a BoP edit disconnected the driver");
+
+    let added = format!("{original}\n[CAR_12]\nMODEL=ks_mazda_mx5_cup\nSKIN=00_official\n");
+    std::fs::write(&path, added).expect("add a car");
+    assert!(srv.server.next_session(), "loop refused");
+    assert!(
+        car.client().is_none(),
+        "a driver kept a car list that changed"
+    );
+    assert_eq!(srv.server.listed_cars().len(), 13);
+}

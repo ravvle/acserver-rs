@@ -8,7 +8,7 @@ use super::client::{Client, Frame};
 use super::entrycar::EntryCar;
 use super::firstupdate::leaderboard_time;
 use crate::proto::{self, SessionType};
-use crate::wire::{self, Writer};
+use crate::wire::{self, Narrow, Writer};
 
 impl Server {
     /// The ready clients (see `Client::ready`).
@@ -46,7 +46,7 @@ impl Server {
         w.u8(car.session_id);
         w.string8(&id.name);
         // The occupant's own nation.
-        w.string8(&id.nation);
+        w.narrow8(&id.nation);
         self.broadcast_tcp(w.bytes(), Some(car.session_id));
     }
 
@@ -167,10 +167,10 @@ impl Server {
     }
 
     /// Sends one slot's 0x50 to a client.
-    pub(crate) fn send_tyre_compound(&self, client: &Client, id: u8, compound: &str) {
+    pub(crate) fn send_tyre_compound(&self, client: &Client, id: u8, compound: &Narrow) {
         let mut w = Writer::with_id(proto::TYRE_COMPOUND_CHANGE);
         w.u8(id);
-        w.string8(compound);
+        w.narrow8(compound);
         self.send_tcp(client, w.bytes());
     }
 

@@ -15,6 +15,7 @@ use super::handshake::secret_equal;
 use super::setup::{load_fixed_setup, setup_file};
 use crate::config::parse_steam_id;
 use crate::proto::SessionType;
+use crate::wire::Narrow;
 
 impl Server {
     /// Whether the server is in booking mode.
@@ -85,8 +86,8 @@ impl Server {
         let _alloc = self.alloc.lock();
         let driver = Identity {
             name: name.to_string(),
-            team: team.to_string(),
-            nation: String::new(),
+            team: team.into(),
+            nation: Narrow::default(),
             guid: guid.to_string(),
         };
         if let Some(car) = self.car_by_driver_guid(guid) {
@@ -189,6 +190,7 @@ impl Server {
         let mut bop_changed = false;
         {
             let mut alloc = self.alloc.lock();
+            let loaded_list = self.car_list_layout();
             let entries = match reloaded {
                 Some(entries) => entries,
                 None => alloc.loaded_entries.clone(),
@@ -238,12 +240,44 @@ impl Server {
                 // they leave.
                 car.reset_driver(entry);
             }
+            // A client never asks for the car list again, and the game reads
+            // 0x49, 0x4A and 0x4B one row per car of the list it loaded, not
+            // by their counts. If the list changed, nobody's still fits.
+            if self.car_list_layout() != loaded_list {
+                for car in &self.entry_cars {
+                    if let Some(client) = car.client() {
+                        tracing::info!(
+                            car = car.session_id,
+                            name = client.name(),
+                            "entry list reload changed the car list; disconnecting"
+                        );
+                        self.disconnect(&client, "entry list reload");
+                    }
+                }
+            }
             alloc.loaded_entries = entries;
         }
         self.booking_version.fetch_add(1, Ordering::SeqCst);
         if bop_changed {
             self.broadcast_bop();
         }
+    }
+
+    /// The listed cars as a joining client loads them from 0x40: slot,
+    /// model, skin and whether it is a spectator's.
+    fn car_list_layout(&self) -> Vec<(u8, String, String, bool)> {
+        self.listed_cars()
+            .iter()
+            .map(|car| {
+                let state = car.state();
+                (
+                    car.session_id,
+                    car.model(),
+                    state.skin,
+                    state.spectator_mode,
+                )
+            })
+            .collect()
     }
 
     /// Whether `model` is in [SERVER] CARS (vanilla isCarLegal).

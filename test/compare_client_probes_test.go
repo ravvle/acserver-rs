@@ -176,6 +176,92 @@ func probeNameSurrogates(t *testing.T, tgt *target) capture {
 }
 
 // ---------------------------------------------------------------------------
+// Narrow strings written in the client's code page
+// ---------------------------------------------------------------------------
+
+// latin1Team and latin1Nation are "Équipe" and "DÄN" as acs.exe writes a
+// narrow string (rustyAC packet.rs Writer::ansi): the low byte of each UTF-16
+// unit, so a non-ASCII character is one byte that is not valid UTF-8.
+const (
+	latin1Team   = "\xC9quipe"
+	latin1Nation = "D\xC4N"
+)
+
+// probeLatin1Identity joins a driver whose team and nation hold Latin-1
+// bytes and captures, in hex, what an in-world player is told of them: the
+// nation in 0x5A and both in the 0x40 car list.
+func probeLatin1Identity(t *testing.T, tgt *target) capture {
+	var cap capture
+	a := joinPlayer(t, tgt, joinAs("Ascii"))
+	if a == nil {
+		return cap
+	}
+	defer a.k.close()
+	if _, ok := a.enterWorld(t, tgt); !ok {
+		return cap
+	}
+	a.k.drainTCP(firstUpdateIdle, firstUpdateBudget)
+
+	w := wire.NewWriterID(proto.RequestNewConnection)
+	w.UInt16(proto.ClientProtocolVersion)
+	w.String8(probeGUID2)
+	w.WString8("Latin")
+	w.String8(latin1Team)
+	w.String8(latin1Nation)
+	w.String8(probeCar)
+	w.String8("")
+	k := dial(t, tgt)
+	defer k.close()
+	k.sendTCP(w.Bytes())
+	pkt, ok := k.awaitTCP(proto.NewCarConnection, 3*time.Second)
+	if !ok {
+		cap.add(packet{label: "TCP <no 0x3E>"})
+		return cap
+	}
+	b := &player{k: k, sessionID: sessionIDFromHandshake(pkt)}
+	if _, ok := b.enterWorld(t, tgt); !ok {
+		return cap
+	}
+	for _, pkt := range a.k.drainTCP(firstUpdateIdle, firstUpdateBudget) {
+		if pkt[0] == proto.CarConnected {
+			r := wire.NewReader(pkt[1:])
+			cap.add(packet{label: "TCP 0x5A CarConnected", fields: []field{
+				{"sessionID", u8(r)}, {"name", r.String8()},
+				{"nationHex", fmt.Sprintf("%X", r.String8())}}})
+		}
+	}
+
+	req := wire.NewWriterID(proto.CarListRequest)
+	req.UInt8(0)
+	a.k.sendTCP(req.Bytes())
+	list, ok := a.k.awaitTCP(proto.CarList, 2*time.Second)
+	if !ok {
+		cap.add(packet{label: "TCP <no 0x40>"})
+		return cap
+	}
+	r := wire.NewReader(list[1:])
+	r.UInt8() // page index
+	n := int(r.UInt8())
+	for i := 0; i < n; i++ {
+		id := u8(r)
+		r.String8() // model
+		r.String8() // skin
+		name := r.String8()
+		team := r.String8()
+		nation := r.String8()
+		r.Bool()
+		r.Bytes(5 * 4)
+		if id != fmt.Sprint(b.sessionID) {
+			continue
+		}
+		cap.add(packet{label: "TCP 0x40 CarList row", fields: []field{
+			{"sessionID", id}, {"name", name},
+			{"teamHex", fmt.Sprintf("%X", team)}, {"nationHex", fmt.Sprintf("%X", nation)}}})
+	}
+	return cap
+}
+
+// ---------------------------------------------------------------------------
 // A spectator slot and the client's row count
 // ---------------------------------------------------------------------------
 

@@ -377,8 +377,8 @@ fn build_entry_list(server: &Server, guid: &str) -> EntryListResponse {
             model: car.model(),
             skin: car.state().skin,
             driver_name: id.name,
-            driver_team: id.team,
-            driver_nation: id.nation,
+            driver_team: id.team.to_string(),
+            driver_nation: id.nation.to_string(),
             is_connected: car.occupied(),
             // "Reserved for the requester", not "occupied by" (docs/05 §5.2).
             is_requested_guid: car.reserved_for(guid),

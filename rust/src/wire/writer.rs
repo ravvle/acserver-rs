@@ -1,4 +1,4 @@
-use super::Vec3;
+use super::{Narrow, Vec3};
 
 /// Builds a payload, framed with `frame_tcp` for TCP or sent as-is for UDP.
 ///
@@ -115,6 +115,13 @@ impl Writer {
     /// The cut can split a character.
     pub fn string8(&mut self, s: &str) {
         let bytes = &s.as_bytes()[..s.len().min(255)];
+        self.u8(bytes.len() as u8);
+        self.raw(bytes);
+    }
+
+    /// Writes a u8 byte-length prefix, then the bytes verbatim, cut to 255.
+    pub fn narrow8(&mut self, s: &Narrow) {
+        let bytes = &s.as_bytes()[..s.as_bytes().len().min(255)];
         self.u8(bytes.len() as u8);
         self.raw(bytes);
     }

@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use super::client::Client;
 use super::setup::SetupEntry;
 use crate::config;
-use crate::wire::Vec3;
+use crate::wire::{Narrow, Vec3};
 
 /// A decoded inbound 0x46, re-encoded for the outbound one.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -59,8 +59,8 @@ impl CarResult {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Identity {
     pub name: String,
-    pub team: String,
-    pub nation: String,
+    pub team: Narrow,
+    pub nation: Narrow,
     pub guid: String,
 }
 
@@ -104,7 +104,7 @@ pub struct SlotState {
     /// keeps naming it, and its guid reclaims the slot (docs/01 §1.5).
     pub driver: Identity,
     /// The slot's last 0x50, sent to joiners until the next driver takes it.
-    pub tyre_compound: String,
+    pub tyre_compound: Narrow,
     /// The traffic driver's name while AI drives the slot (EnableAi), which
     /// every listing shows in place of the last driver.
     pub ai_name: Option<String>,
@@ -436,8 +436,8 @@ fn initial_driver(entry: &config::EntryCar, reserved: bool) -> Identity {
     }
     Identity {
         name: entry.driver_name.clone(),
-        team: entry.team.clone(),
-        nation: String::new(),
+        team: entry.team.as_str().into(),
+        nation: Narrow::default(),
         guid: String::new(),
     }
 }

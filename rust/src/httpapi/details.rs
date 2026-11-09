@@ -119,8 +119,8 @@ fn build_details(server: &Server, guid: &str) -> Details {
         let id = car.identity();
         cars.push(DetailsCar {
             driver_name: id.name,
-            driver_nation: id.nation,
-            driver_team: id.team,
+            driver_nation: id.nation.to_string(),
+            driver_team: id.team.to_string(),
             id: client.as_ref().map(|c| anon_id(&c.identity().guid)),
             is_connected: client.is_some(),
             is_entry_list: is_entry_list(server, &car, is_admin, guid),

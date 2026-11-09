@@ -10,7 +10,7 @@ use super::csp::parse_csp_version;
 use super::entrycar::EntryCar;
 use crate::config::parse_steam_id;
 use crate::proto::{self, SessionType};
-use crate::wire::{Reader, Writer};
+use crate::wire::{Narrow, Reader, Writer};
 
 /// The wstring8 ceiling: any name a client can encode survives intact, as in
 /// vanilla, while the stored string stays bounded.
@@ -31,8 +31,8 @@ struct JoinRequest {
     version: u16,
     guid: String,
     name: String,
-    team: String,
-    nation: String,
+    team: Narrow,
+    nation: Narrow,
     requested_car: String,
     password: String,
 }
@@ -54,8 +54,8 @@ impl Server {
             version: r.u16(),
             guid: r.string8(),
             name: r.wstring8(),
-            team: r.string8(),
-            nation: r.string8(),
+            team: r.narrow8(),
+            nation: r.narrow8(),
             requested_car: r.string8(),
             password: r.string8(),
         };
@@ -260,7 +260,7 @@ impl Server {
         car: &Arc<EntryCar>,
         guid: u64,
         guid_str: &str,
-        nation: &str,
+        nation: &Narrow,
         is_admin: bool,
     ) -> bool {
         {
@@ -277,7 +277,7 @@ impl Server {
                 guid: guid_str.to_string(),
                 name: booking.name,
                 team: booking.team,
-                nation: nation.to_string(),
+                nation: nation.clone(),
                 car_model: car.model(),
             });
             client.set_admin(is_admin || car.booked_as_admin.load(Ordering::SeqCst));
@@ -432,7 +432,7 @@ impl Server {
                 name.to_string()
             },
             team: if reserved && !reserved_team.is_empty() {
-                reserved_team
+                reserved_team.into()
             } else {
                 req.team.clone()
             },

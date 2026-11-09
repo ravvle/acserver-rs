@@ -48,6 +48,16 @@ All values are **little-endian** and structures are **packed** (no padding).
 For `string*` the length counts bytes; for `wstring*` it counts characters,
 each 4 bytes on the wire.
 
+**Narrow strings from the game are not UTF-8.** The game writes a `string8`
+in its code page: the low byte of each UTF-16 unit, so "Équipe" arrives as
+`C9 71 75 69 70 65` (game client code as ported by rustyAC). That applies to
+every narrow field of `0x3D` (team, nation, car, password) and to `0x50`.
+Vanilla keeps those bytes and relays them unchanged: the team and nation come
+back verbatim in `0x40` and `0x5A`, which the game shows as the characters it
+sent (measured on v1.15). Converting them to UTF-8 on the way in breaks them.
+Where vanilla turns them into JSON or a wide string, each invalid byte becomes
+U+FFFD.
+
 **Characters outside the basic plane.** The game without CSP fills each
 4-byte cell with one UTF-16 unit, so an emoji arrives as its two surrogates.
 Vanilla decodes each surrogate cell on its own, as U+FFFD: a chat line `x😀`

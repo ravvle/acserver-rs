@@ -119,8 +119,8 @@ impl Server {
             w.string8(&state.skin);
             let id = car.identity();
             w.string8(&id.name);
-            w.string8(&id.team);
-            w.string8(&id.nation);
+            w.narrow8(&id.team);
+            w.narrow8(&id.nation);
             w.bool(state.spectator_mode);
             for level in state.damage {
                 w.f32(level);
@@ -168,12 +168,12 @@ impl Server {
     /// Stores a 0x50 for later joiners' snapshots and relays it to the other
     /// cars; vanilla does not echo it.
     pub(crate) fn handle_tyre_compound(&self, client: &Client, r: &mut Reader) {
-        let name = r.string8();
+        let name = r.narrow8();
         let id = client.session_id();
         self.entry_cars[usize::from(id)].update(|s| s.tyre_compound = name.clone());
         let mut w = Writer::with_id(proto::TYRE_COMPOUND_CHANGE);
         w.u8(id);
-        w.string8(&name);
+        w.narrow8(&name);
         self.broadcast_tcp(w.bytes(), Some(id));
     }
 

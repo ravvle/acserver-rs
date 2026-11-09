@@ -149,7 +149,11 @@ take effect at the next loop: changed cars, reservations and BoP, cars added up
 to `MAX_CLIENTS`, cars removed. `server_cfg.ini` is not re-read. Vanilla's new
 car objects orphan every connected client, so nobody hears anything until they
 reconnect. Keeping each driver whose slot still fits them (same model, still
-reserved for them) and disconnecting the rest avoids that. With pickup mode off, vanilla also seats nobody as admin from the join's password
+reserved for them) and disconnecting the rest avoids that, but only while the
+car list itself is unchanged: slots, models, skins and spectator flags. A
+client never asks for the car list again, and reads `0x49`, `0x4A` and `0x4B`
+one row per car of the list it loaded (doc 2 §2.2 `0x49`), so after any edit
+to the list a kept driver misreads them. With pickup mode off, vanilla also seats nobody as admin from the join's password
 (only a booking with the admin password does), so admins use `/admin`.
 
 **`/ACAUTH`** is Kunos's test `AUTH_PLUGIN_ADDRESS`: `OK` for the query value

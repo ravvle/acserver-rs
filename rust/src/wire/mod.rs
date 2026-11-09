@@ -3,10 +3,12 @@
 //! so no other module does byte-order math or string encoding by hand.
 
 mod framing;
+mod narrow;
 mod reader;
 mod writer;
 
 pub use framing::{MAX_TCP_RECV, frame_tcp};
+pub use narrow::Narrow;
 pub use reader::Reader;
 pub use writer::Writer;
 

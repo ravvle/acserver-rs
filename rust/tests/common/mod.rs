@@ -357,8 +357,18 @@ pub fn join_client_features(srv: &TestServer, name: &str, features: Option<&str>
 /// A join that returns an error instead of failing, for joins from many
 /// threads. It does not wait for readiness.
 pub fn join(srv: &TestServer, name: &str, features: Option<&str>) -> Result<Joined, String> {
+    join_guid(srv, &next_guid(), name, features)
+}
+
+/// `join` under a chosen guid, for a slot reserved for it.
+pub fn join_guid(
+    srv: &TestServer,
+    guid: &str,
+    name: &str,
+    features: Option<&str>,
+) -> Result<Joined, String> {
     let mut conn = Conn::dial(srv.game);
-    conn.send(&handshake(&next_guid(), name, "", features));
+    conn.send(&handshake(guid, name, "", features));
     conn.set_timeout(Duration::from_secs(5));
     let resp = conn
         .read()

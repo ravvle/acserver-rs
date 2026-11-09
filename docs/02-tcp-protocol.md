@@ -218,7 +218,11 @@ Collisions go only to the plugin (doc 6), never to other clients, and may arrive
 up to ~5 s late. A jump start is re-broadcast as `0x82` (§2.2).
 
 The count is required for a jump start too. A bare `0x82 0x0C` is ignored:
-nothing is relayed and the connection stays up (measured on v1.15).
+nothing is relayed and the connection stays up (measured on v1.15). The game
+itself sends its jump start bare, without the count (game client code as
+ported by rustyAC), so with vanilla a real client's jump start is never
+re-broadcast and never reaches the plugin. Only a client that writes the
+count gets the §2.2 `0x82`.
 
 ### 0xAB — Extended `[CSP]`
 
@@ -484,7 +488,7 @@ way (measured on v1.15).
 | SessionId | `u8` | who completed the lap; `0xFF` for a plain sync |
 | LapTime | `u32` | ms |
 | Cuts | `u8` | |
-| LapCount | `u8` | number of entries: **one per slot**, empty and spectator slots included |
+| LapCount | `u8` | number of entries: **one per slot**, empty and spectator slots included. The game skips this byte (below) |
 
 Entries, ranked:
 
@@ -500,6 +504,13 @@ Then:
 | Field | Type |
 |---|---|
 | TrackGrip | `f32` |
+
+**How the game reads the rows.** The game skips `LapCount` and reads one entry
+per car of the car list it loaded at its join (`0x40`), less the spectators'
+(game client code as ported by rustyAC). It reads `0x4A`'s grid and `0x4B`'s
+entries the same way. It asks for the car list only once, so these three
+packets must keep the row count it loaded for as long as it stays connected.
+A count that differs shifts every later field: in `0x4A`, the StartTime.
 
 **Ranking.** In a race: most laps first, then least total time. Otherwise: best
 lap, fastest first, and on a tie a connected slot before an empty one.
@@ -531,7 +542,7 @@ which clears it. A driver who rejoins gets their old slot back with their laps.
 | per slot: SessionId | `u8` | every slot, ranked as in `0x49` |
 | per slot: Time | `u32` | as in `0x49` |
 | per slot: NumLaps | `u16` | |
-| PickupMode | `bool` | after the results. Each entry is 7 bytes, so read entries while ≥ 8 bytes remain |
+| PickupMode | `bool` | after the results. Each entry is 7 bytes. The game reads one per car of its list (see `0x49`); a reader without the car list can read entries while ≥ 8 bytes remain |
 
 ### 0x0D — P2PUpdate
 

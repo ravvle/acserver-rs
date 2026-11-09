@@ -329,7 +329,7 @@ impl PluginManager {
         w.wstring8(&car.state().skin);
         let id = car.identity();
         w.wstring8(&id.name);
-        w.wstring8(&id.team);
+        w.wstring8(&id.team.to_string());
         w.wstring8(&id.guid);
         self.send(&w);
     }

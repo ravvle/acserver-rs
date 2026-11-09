@@ -274,7 +274,8 @@ Honest gaps, not doc errors. Keep this list current.
   with a `listed` flag and lock-protected entry-list fields per slot, so a
   session id stays its index; every car listing goes through `listed_cars()`.
   A loop back re-reads `entry_list.ini` (`Server::reload_entry_list`). Vanilla
-  orphans connected clients there; ours keeps drivers whose slot still fits.
+  orphans connected clients there; ours keeps drivers whose slot still fits,
+  unless the car list changed, which disconnects everyone.
 
 ## AssettoServer features and licensing
 

@@ -66,6 +66,18 @@ fn string8_truncates_bytes() {
 }
 
 #[test]
+fn narrow8_keeps_code_page_bytes() {
+    // "Équipe" as the game writes it: one Latin-1 byte, not UTF-8.
+    let bytes = [6, 0xC9, b'q', b'u', b'i', b'p', b'e'];
+    let mut r = Reader::new(&bytes);
+    let team = r.narrow8();
+    assert_eq!(team.to_string(), "\u{FFFD}quipe");
+    let mut w = Writer::new();
+    w.narrow8(&team);
+    assert_eq!(w.bytes(), bytes);
+}
+
+#[test]
 fn invalid_utf32_becomes_replacement() {
     let mut w = Writer::new();
     w.u8(1);

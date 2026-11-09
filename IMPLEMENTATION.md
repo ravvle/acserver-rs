@@ -108,7 +108,9 @@ recorded deviations. The hard-coded abuse limits are tabled in the README
 - **Booking.** The `0x41` vanilla misaddresses is not sent at all.
 - **Entry-list reload.** At a loop back to the first session, drivers whose
   slot still fits (same model, still reserved for them) stay connected and the
-  rest are disconnected. A file that fails to load or check keeps the
+  rest are disconnected. If the car list changed (slots, models, skins or
+  spectator flags), every driver is disconnected, since the game would misread
+  `0x49`, `0x4A` and `0x4B` against the list it loaded. A file that fails to load or check keeps the
   previous list.
 - **`/RECONFIG`.** The settings are discarded, as in vanilla. The error text
   is serde's, and the HTTP library answers `400` to a raw `"` in the query.
