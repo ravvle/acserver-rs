@@ -233,6 +233,9 @@ pub struct Server {
 impl Server {
     /// Builds a server from parsed config.
     pub fn new(cfg: Config) -> anyhow::Result<Arc<Server>> {
+        // reqwest takes rustls's process-wide provider. Installing it a second
+        // time (another server in the same test process) fails harmlessly.
+        let _ = rustls::crypto::ring::default_provider().install_default();
         if cfg.entry_list.len() > proto::MAX_CAR_SLOTS {
             anyhow::bail!(
                 "entry list has {} car slots (max {})",
@@ -373,7 +376,7 @@ impl Server {
         let server = Server {
             entry_cars,
             // Non-negative, as vanilla's.
-            random_seed: rand::Rng::random_range(&mut rand::rng(), 0..=i32::MAX),
+            random_seed: rand::RngExt::random_range(&mut rand::rng(), 0..=i32::MAX),
             drs_zones,
             csp_extra,
             scripts,

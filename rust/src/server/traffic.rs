@@ -9,8 +9,8 @@ use parking_lot::{Mutex, MutexGuard};
 use std::sync::Arc;
 
 use anyhow::Context as _;
-use rand::Rng;
 use rand::seq::SliceRandom as _;
+use rand::{Rng, RngExt};
 
 use super::Server;
 use super::client::{Client, MAX_SESSION_SLOTS};

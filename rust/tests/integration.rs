@@ -254,7 +254,13 @@ fn entry_list_reload_keeps_drivers_only_while_the_car_list_holds() {
     let car = srv.server.car_by_id(driver.id).expect("slot");
 
     std::fs::write(&path, original.replace("BALLAST=0", "BALLAST=20")).expect("edit BoP");
-    assert!(srv.server.next_session(), "loop refused");
+    // next_session refuses while the driver waits for its first update,
+    // which goes out a moment after the 0x46 that made it ready.
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !srv.server.next_session() {
+        assert!(Instant::now() < deadline, "loop refused");
+        std::thread::sleep(Duration::from_millis(5));
+    }
     assert!(car.client().is_some(), "a BoP edit disconnected the driver");
 
     let added = format!("{original}\n[CAR_12]\nMODEL=ks_mazda_mx5_cup\nSKIN=00_official\n");

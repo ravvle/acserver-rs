@@ -14,7 +14,7 @@ use acserver_rs::wire::{Vec3, Writer};
 use common::*;
 use rand::SeedableRng as _;
 use rand::seq::SliceRandom as _;
-use rand::{Rng as _, rngs::StdRng};
+use rand::{RngExt as _, rngs::StdRng};
 
 /// Each race loads the machine; they run one at a time.
 static SERIAL: Mutex<()> = Mutex::new(());

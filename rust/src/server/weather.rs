@@ -1,7 +1,7 @@
 //! Ambient conditions and the dynamic track.
 
 use parking_lot::Mutex;
-use rand::Rng;
+use rand::RngExt;
 
 use crate::config::Config;
 

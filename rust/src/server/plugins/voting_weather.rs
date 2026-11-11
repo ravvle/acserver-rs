@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
-use rand::Rng;
+use rand::RngExt;
 use rand::seq::SliceRandom as _;
 use serde::Deserialize;
 

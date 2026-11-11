@@ -34,21 +34,20 @@ impl Plugin for GeoIp {
 
     fn on_first_update(&self, _server: &Arc<Server>, client: &Arc<Client>) {
         let ip = client.peer.ip();
-        let city: Option<maxminddb::geoip2::City> = self.reader.lookup(ip).ok().flatten();
+        let city: Option<maxminddb::geoip2::City> = self
+            .reader
+            .lookup(ip)
+            .and_then(|result| result.decode())
+            .ok()
+            .flatten();
         let Some(city) = city else {
             tracing::warn!(name = client.name(), "no GeoIP result");
             return;
         };
-        let country = city.country.as_ref();
-        let name = country
-            .and_then(|c| c.names.as_ref())
-            .and_then(|n| n.get("en"))
-            .copied()
-            .unwrap_or("?");
-        let code = country.and_then(|c| c.iso_code).unwrap_or("?");
-        let location = city.location.as_ref();
-        let lat = location.and_then(|l| l.latitude).unwrap_or(0.0);
-        let lon = location.and_then(|l| l.longitude).unwrap_or(0.0);
+        let name = city.country.names.english.unwrap_or("?");
+        let code = city.country.iso_code.unwrap_or("?");
+        let lat = city.location.latitude.unwrap_or(0.0);
+        let lon = city.location.longitude.unwrap_or(0.0);
         tracing::info!(
             name = client.name(),
             country = name,

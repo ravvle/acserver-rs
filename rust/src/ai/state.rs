@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::f32::consts::PI;
 
-use rand::Rng;
+use rand::{Rng, RngExt};
 use smart_default::SmartDefault;
 
 use super::spline::AiSpline;

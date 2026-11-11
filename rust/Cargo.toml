@@ -9,25 +9,28 @@ publish = false
 [dependencies]
 anyhow = "1"
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
-base64 = "0.22"
+base64 = "0.23"
 bytes = "1"
 clap = { version = "4", features = ["derive"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 chrono-tz = { version = "0.10", default-features = false }
 flate2 = "1"
 form_urlencoded = "1"
-glam = "0.30"
+glam = "0.34"
 half = "2"
 governor = { version = "0.10", default-features = false, features = ["std"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 md-5 = "0.11"
-parking_lot = "0.12"
+parking_lot = "0.13"
 percent-encoding = "2"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-rand = "0.9"
+reqwest = { version = "0.13", default-features = false, features = ["json", "query", "rustls-no-provider"] }
+rand = "0.10"
 regex = "1"
-maxminddb = "0.26"
-rstar = "0.13"
+maxminddb = "0.32"
+rstar = "0.14"
+# The TLS provider for reqwest: ring, which builds on every release target with
+# a plain C compiler (reqwest's own default, aws-lc-rs, needs far more).
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha1 = "0.11"
@@ -46,7 +49,7 @@ walkdir = "2"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls-no-provider"] }
 tempfile = "3"
 
 [profile.release]

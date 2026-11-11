@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use rand::Rng;
+use rand::RngExt;
 
 use super::ini::IniFile;
 use super::values::{parse_bool, parse_float, parse_int, parse_steam_id, scan_car_index};
