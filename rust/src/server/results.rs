@@ -1,6 +1,7 @@
 //! The results recorder: laps and collisions for the session in progress.
 
 use parking_lot::Mutex;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use super::Server;
@@ -10,10 +11,20 @@ use crate::proto::SessionType;
 use crate::results::{self, Car, Driver, Event, Lap, ResultRow, Session};
 use crate::wire::Vec3;
 
+/// The most laps and collisions one car records in a session. A session
+/// with no time or lap limit never ends, and a client chooses what it
+/// reports, so without a cap the recorder grows until the process runs out
+/// of memory. Far above any real session: a car would need a lap under 90 s
+/// for a whole day to reach it.
+const MAX_LAPS_PER_CAR: usize = 1000;
+const MAX_EVENTS_PER_CAR: usize = 500;
+
 #[derive(Debug, Default)]
 struct RecorderInner {
     laps: Vec<Lap>,
     events: Vec<Event>,
+    /// Laps and events recorded so far, by car id.
+    per_car: HashMap<i64, (usize, usize)>,
 }
 
 /// Accumulates laps and collisions for the session in progress.
@@ -22,17 +33,44 @@ pub struct ResultsRecorder {
     inner: Mutex<RecorderInner>,
 }
 
+/// Counts one more record against `cap`, warning when it is reached.
+fn take_room(count: &mut usize, cap: usize, car_id: i64, what: &str) -> bool {
+    if *count >= cap {
+        return false;
+    }
+    *count += 1;
+    if *count == cap {
+        tracing::warn!(
+            car = car_id,
+            cap,
+            "results: {what} cap reached; later ones this session are not recorded"
+        );
+    }
+    true
+}
+
 impl ResultsRecorder {
-    fn add_event(&self, event: Event) {
-        self.inner.lock().events.push(event);
+    /// Records the event `make` builds, unless the car has used its share.
+    fn add_event(&self, car_id: i64, make: impl FnOnce() -> Event) {
+        let mut inner = self.inner.lock();
+        let (_, events) = inner.per_car.entry(car_id).or_default();
+        if take_room(events, MAX_EVENTS_PER_CAR, car_id, "collision") {
+            inner.events.push(make());
+        }
     }
 
-    fn add_lap(&self, lap: Lap) {
-        self.inner.lock().laps.push(lap);
+    /// Records the lap `make` builds, unless the car has used its share.
+    fn add_lap(&self, car_id: i64, make: impl FnOnce() -> Lap) {
+        let mut inner = self.inner.lock();
+        let (laps, _) = inner.per_car.entry(car_id).or_default();
+        if take_room(laps, MAX_LAPS_PER_CAR, car_id, "lap") {
+            inner.laps.push(make());
+        }
     }
 
     fn drain(&self) -> (Vec<Lap>, Vec<Event>) {
         let mut inner = self.inner.lock();
+        inner.per_car.clear();
         (
             std::mem::take(&mut inner.laps),
             std::mem::take(&mut inner.events),
@@ -63,44 +101,57 @@ impl Server {
         pos: Vec3,
         rel: Vec3,
     ) {
+        if !self.cfg.extra.write_result_json {
+            return;
+        }
         let car = &self.entry_cars[usize::from(client.session_id())];
-        let (kind, other_car_id, other_driver) = match other {
-            Some(other) => (
-                "COLLISION_WITH_CAR",
-                i64::from(other.session_id),
-                results_driver(other),
-            ),
-            None => ("COLLISION_WITH_ENV", -1, Driver::default()),
-        };
-        self.recorder.add_event(Event {
-            kind: kind.to_string(),
-            car_id: i64::from(client.session_id()),
-            driver: results_driver(car),
-            other_car_id,
-            other_driver,
-            impact_speed: speed,
-            world_position: pos.into(),
-            rel_position: rel.into(),
+        let car_id = i64::from(client.session_id());
+        self.recorder.add_event(car_id, || {
+            let (kind, other_car_id, other_driver) = match other {
+                Some(other) => (
+                    "COLLISION_WITH_CAR",
+                    i64::from(other.session_id),
+                    results_driver(other),
+                ),
+                None => ("COLLISION_WITH_ENV", -1, Driver::default()),
+            };
+            Event {
+                kind: kind.to_string(),
+                car_id,
+                driver: results_driver(car),
+                other_car_id,
+                other_driver,
+                impact_speed: speed,
+                world_position: pos.into(),
+                rel_position: rel.into(),
+            }
         });
     }
 
     /// Stores a lap for the current session's results file.
     pub(crate) fn record_lap(&self, client: &Client, lap_time: u32, sectors: Vec<u32>, cuts: u8) {
+        if !self.cfg.extra.write_result_json {
+            return;
+        }
         let car = &self.entry_cars[usize::from(client.session_id())];
-        let state = car.state();
-        let id = client.identity();
-        self.recorder.add_lap(Lap {
-            car_id: i64::from(client.session_id()),
-            driver_name: id.name.clone(),
-            driver_guid: id.guid.clone(),
-            car_model: state.model.clone(),
-            lap_time,
-            sectors: Some(sectors),
-            tyre: String::new(),
-            ballast_kg: state.ballast,
-            restrictor: state.restrictor,
-            cuts: i64::from(cuts),
-            timestamp: self.server_time_millis() as u32,
+        let car_id = i64::from(client.session_id());
+        self.recorder.add_lap(car_id, || {
+            let (car_model, ballast_kg, restrictor) =
+                car.read(|s| (s.model.clone(), s.ballast, s.restrictor));
+            let id = client.identity();
+            Lap {
+                car_id,
+                driver_name: id.name.clone(),
+                driver_guid: id.guid.clone(),
+                car_model,
+                lap_time,
+                sectors: Some(sectors),
+                tyre: String::new(),
+                ballast_kg,
+                restrictor,
+                cuts: i64::from(cuts),
+                timestamp: self.server_time_millis() as u32,
+            }
         });
     }
 
@@ -190,5 +241,30 @@ impl Server {
                 None
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recorder_caps_each_car_until_the_session_ends() {
+        let recorder = ResultsRecorder::default();
+        for _ in 0..MAX_LAPS_PER_CAR + 5 {
+            recorder.add_lap(1, Lap::default);
+            recorder.add_event(1, Event::default);
+        }
+        recorder.add_lap(2, Lap::default);
+        let (laps, events) = recorder.drain();
+        assert_eq!(
+            laps.len(),
+            MAX_LAPS_PER_CAR + 1,
+            "car 1 capped, car 2 unaffected"
+        );
+        assert_eq!(events.len(), MAX_EVENTS_PER_CAR);
+        // A new session starts the count again.
+        recorder.add_lap(1, Lap::default);
+        assert_eq!(recorder.drain().0.len(), 1);
     }
 }

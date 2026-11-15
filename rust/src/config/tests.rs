@@ -704,6 +704,14 @@ fn extra_cfg_defaults_and_overrides() {
     write(&dir, "extra_cfg.yml", "EnableCSP: maybe\n");
     let err = load_dir(&dir).expect_err("bad bool");
     assert!(err.to_string().starts_with("extra_cfg.yml: "), "{err}");
+
+    // 0 would drop every player as soon as their handshake completes.
+    write(&dir, "extra_cfg.yml", "PlayerLoadingTimeoutMinutes: 0\n");
+    let err = load_dir(&dir).expect_err("zero loading timeout");
+    assert!(
+        err.to_string().contains("PlayerLoadingTimeoutMinutes"),
+        "{err}"
+    );
 }
 
 #[test]

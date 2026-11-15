@@ -36,7 +36,9 @@ pub struct PluginRequest {
     /// Header names in lower case.
     pub headers: HashMap<String, String>,
     pub peer: Option<IpAddr>,
-    pub body: Vec<u8>,
+    /// Empty when `Plugin::admit` sees the request: the body is read only
+    /// once it is admitted.
+    pub body: bytes::Bytes,
 }
 
 /// A plugin's HTTP answer.
@@ -102,6 +104,11 @@ pub trait Plugin: Send + Sync {
         _previous: Option<PositionUpdate>,
         _position: &PositionUpdate,
     ) {
+    }
+    /// Refuses a request to one of its routes before its body is read, so a
+    /// caller it would reject cannot make the server buffer the body.
+    fn admit(&self, _server: &Arc<Server>, _request: &PluginRequest) -> Option<PluginResponse> {
+        None
     }
     /// Answers an HTTP request it owns.
     fn http(&self, _server: &Arc<Server>, _request: &PluginRequest) -> Option<PluginResponse> {
@@ -305,6 +312,11 @@ impl Server {
     /// Whether a plugin owns this HTTP path.
     pub fn plugin_owns_path(&self, path: &str) -> bool {
         self.plugins.iter().any(|p| p.owns_path(path))
+    }
+
+    /// The first plugin's refusal of a request, before its body is read.
+    pub fn plugin_admit(self: &Arc<Self>, request: &PluginRequest) -> Option<PluginResponse> {
+        self.plugins.iter().find_map(|p| p.admit(self, request))
     }
 
     /// The owning plugin's answer to an HTTP request.

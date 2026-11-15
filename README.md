@@ -211,7 +211,7 @@ carries over.
 | `EnableSessionVoting` | `true` | Session votes |
 | `EnableKickVoting` | `true` | Kick votes |
 | `WriteResultJson` | `true` | Write `results/*.json` |
-| `PlayerLoadingTimeoutMinutes` | `5` | How long a player may take to load before being dropped |
+| `PlayerLoadingTimeoutMinutes` | `5` | How long a player may take to load before being dropped (at least 1) |
 | `ChatRateLimitMs` | `0` | Drop chat sent this soon after the sender's last message (AssettoServer uses 1000). CSP's chat-encoded data is exempt |
 | `EnableServerDetails` | `true` | The `ℹ<port>` name suffix that points Content Manager at its server-details page. The page (`/api/details`) is always served, because CSP reads the server's features from it |
 | `ServerDescription` | `""` | Text shown on that page |
@@ -507,9 +507,12 @@ use, so they are fixed rather than configurable.
 | Lobby-probe (`0xC8`) replies | 20/s per source IP | Spoofed floods reflected at a third party |
 | Time-request (`0xF9`) replies | 20/s per source IP | Spoofed floods reflected at a third party |
 | Position updates | `max(100, 2 × CLIENT_SEND_INTERVAL_HZ)`/s per client | One client's flood is relayed to every player |
+| Relayed TCP packets (laps, splits, damage, P2P, tyres, votes, events, chat) | 100 burst, 30/s per client | One client fills every player's send queue and has them all dropped |
+| Results file | 1000 laps and 500 collisions per car per session | An endless session's results grow until memory runs out |
 | UDP re-association | same IP, or the TCP address's `/24` (`/48`) | Anyone can redirect a live player's UDP with one packet |
 | RCON | 8 connections, 10 s to authenticate | Idle sockets pile up |
-| HTTP read/write | 5–15 s | A slow request ties up the server |
+| HTTP connections | 256 open; headers within 5 s (idle keep-alive included), body within 15 s | Slow or idle connections pile up |
+| ReportPlugin uploads | key and source checked before the body is read; 1 per 30 s per player; 2 GiB in `reports/` | Anyone streams 64 MB bodies, or fills the disk |
 
 ### Not supported
 

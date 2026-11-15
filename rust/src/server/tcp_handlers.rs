@@ -42,6 +42,8 @@ impl Server {
             if !client.csp.allow(false) {
                 return;
             }
+        } else if client.relay_budget.check().is_err() {
+            return;
         } else if self.live().extra.chat_rate_limit_ms > 0 {
             let now = self.uptime_ms();
             let last = client.last_chat_ms.load(Ordering::SeqCst);
@@ -113,16 +115,17 @@ impl Server {
         w.u8(page as u8);
         w.u8((end - page) as u8);
         for car in &cars[page..end] {
+            let (model, skin, spectator, damage) =
+                car.read(|s| (s.model.clone(), s.skin.clone(), s.spectator_mode, s.damage));
             w.u8(car.session_id);
-            w.string8(&car.model());
-            let state = car.state();
-            w.string8(&state.skin);
+            w.string8(&model);
+            w.string8(&skin);
             let id = car.identity();
             w.string8(&id.name);
             w.narrow8(&id.team);
             w.narrow8(&id.nation);
-            w.bool(state.spectator_mode);
-            for level in state.damage {
+            w.bool(spectator);
+            for level in damage {
                 w.f32(level);
             }
         }
@@ -138,7 +141,7 @@ impl Server {
 
         if count == -1 {
             // Query: reply only to the sender with the current count.
-            self.send_p2p(client, id, car.state().p2p_count, false);
+            self.send_p2p(client, id, car.read(|s| s.p2p_count), false);
             return;
         }
 
@@ -310,16 +313,19 @@ impl Server {
         }
     }
 
-    /// Processes collisions and penalties (0x82).
+    /// Processes collisions and penalties (0x82). A jump start is relayed
+    /// once per packet, however many it lists: each relay is a frame in every
+    /// receiver's queue.
     pub(crate) fn handle_client_event(&self, client: &Client, r: &mut Reader) {
         let count = r.i16();
         let id = client.session_id();
+        let mut jump_start = false;
         for _ in 0..count.max(0) {
             let kind = r.u8();
             // The count is client-declared; stop at the end of the data rather
             // than report zeroed collisions to the plugin.
             if r.overflowed() {
-                return;
+                break;
             }
             match kind {
                 proto::EVENT_COLLISION_WITH_CAR => {
@@ -328,7 +334,7 @@ impl Server {
                     let pos = r.vec3();
                     let rel = r.vec3();
                     if r.overflowed() {
-                        return;
+                        break;
                     }
                     if let Some(other) = self.car_by_id(target) {
                         self.record_collision(client, Some(&other), speed, pos, rel);
@@ -342,19 +348,20 @@ impl Server {
                     let pos = r.vec3();
                     let rel = r.vec3();
                     if r.overflowed() {
-                        return;
+                        break;
                     }
                     self.record_collision(client, None, speed, pos, rel);
                     self.plugin().on_collision_with_env(id, speed, pos, rel);
                 }
-                proto::EVENT_JUMP_START => {
-                    let mut w = Writer::with_id(proto::CLIENT_EVENT);
-                    w.u8(proto::EVENT_JUMP_START);
-                    w.u8(id);
-                    self.broadcast_tcp(w.bytes(), None);
-                }
-                _ => return, // unknown event: stop parsing this batch
+                proto::EVENT_JUMP_START => jump_start = true,
+                _ => break, // unknown event: stop parsing this batch
             }
+        }
+        if jump_start {
+            let mut w = Writer::with_id(proto::CLIENT_EVENT);
+            w.u8(proto::EVENT_JUMP_START);
+            w.u8(id);
+            self.broadcast_tcp(w.bytes(), None);
         }
     }
 }

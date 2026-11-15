@@ -50,7 +50,7 @@ pub struct ResultRow {
 }
 
 /// A single recorded lap.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct Lap {
     pub car_id: i64,
@@ -88,7 +88,7 @@ impl From<glam::Vec3> for Vec3 {
 }
 
 /// One collision, as vanilla's onClientEvent records it.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct Event {
     /// COLLISION_WITH_CAR or COLLISION_WITH_ENV.

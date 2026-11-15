@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use axum::Json;
 use axum::response::{IntoResponse, Response};
 
-use super::content::{ContentManifest, build_content};
+use super::content::{ContentCache, ContentManifest, build_content};
 use super::{InfoResponse, build_info, is_admin_guid, is_entry_list};
 use crate::server::Server;
 
@@ -99,12 +99,16 @@ struct Details {
 /// GET /api/details. Always served, as AssettoServer serves it: CSP reads
 /// the server's features here (docs/04 §4.6). EnableServerDetails only adds
 /// the ℹ<port> name suffix.
-pub(super) fn handle_details(server: &Server, query: &HashMap<String, String>) -> Response {
+pub(super) fn handle_details(
+    server: &Server,
+    query: &HashMap<String, String>,
+    content: &ContentCache,
+) -> Response {
     let guid = query.get("guid").map(String::as_str).unwrap_or("");
-    Json(build_details(server, guid)).into_response()
+    Json(build_details(server, guid, content)).into_response()
 }
 
-fn build_details(server: &Server, guid: &str) -> Details {
+fn build_details(server: &Server, guid: &str, content: &ContentCache) -> Details {
     let cfg = &server.cfg;
     let mut info = build_info(server);
     // The /INFO fields, but name has no ℹ<port> suffix.
@@ -127,7 +131,7 @@ fn build_details(server: &Server, guid: &str) -> Details {
             // Reserved for the requester, as in /JSON.
             is_requested_guid: car.reserved_for(guid),
             model: car.model(),
-            skin: car.state().skin,
+            skin: car.skin(),
         });
     }
 
@@ -153,7 +157,7 @@ fn build_details(server: &Server, guid: &str) -> Details {
             tyre_wear_rate: cfg.server.tyre_wear_rate,
         },
         city: String::new(),
-        content: build_content(server),
+        content: build_content(server, content),
         current_weather_id: wx.graphics,
         description: cfg.extra.server_description.clone(),
         extensions: Empty {},

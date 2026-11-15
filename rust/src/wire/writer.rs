@@ -48,6 +48,17 @@ impl Writer {
         self.buf.is_empty()
     }
 
+    /// Overwrites the byte at `at`, a field written earlier (a count only
+    /// known once the rest is written).
+    pub fn set_u8(&mut self, at: usize, v: u8) {
+        self.buf[at] = v;
+    }
+
+    /// Empties the payload, keeping its allocation for reuse.
+    pub fn clear(&mut self) {
+        self.buf.clear();
+    }
+
     pub fn u8(&mut self, v: u8) {
         self.buf.push(v);
     }

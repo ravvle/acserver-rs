@@ -46,7 +46,7 @@ impl Server {
     pub(crate) fn car_by_driver_guid(&self, guid: &str) -> Option<Arc<EntryCar>> {
         self.listed_cars()
             .into_iter()
-            .find(|car| car.reserved_for(guid) || car.state().driver.guid == guid)
+            .find(|car| car.read(|s| s.guids.iter().any(|g| g == guid) || s.driver.guid == guid))
     }
 
     /// The current session's time left in seconds, which vanilla's booking

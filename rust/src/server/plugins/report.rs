@@ -36,6 +36,10 @@ const IP_API_URL: &str = "http://ip-api.com/json";
 /// A clip must be this far apart from the same player's last one.
 const MIN_REPORT_INTERVAL: Duration = Duration::from_secs(30);
 
+/// Uploads are refused once `reports/` holds this much, until a moderator
+/// clears it: each upload is a file of up to 64 MB.
+const MAX_REPORTS_BYTES: u64 = 2 << 30;
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "PascalCase")]
 struct AuditClient {
@@ -68,7 +72,6 @@ struct AuditLog {
 /// A player's last uploaded clip.
 struct Replay {
     id: String,
-    at: SystemTime,
     submitted: bool,
 }
 
@@ -82,6 +85,20 @@ pub struct Report {
     events: Mutex<VecDeque<AuditEvent>>,
     /// By guid.
     replays: Mutex<HashMap<u64, Replay>>,
+    /// When each guid last uploaded, kept across reconnects so rejoining
+    /// does not lift `MIN_REPORT_INTERVAL`. Entries older than it are pruned.
+    last_upload: Mutex<HashMap<u64, SystemTime>>,
+}
+
+/// The bytes under `dir`, not following links.
+fn dir_bytes(dir: &std::path::Path) -> u64 {
+    walkdir::WalkDir::new(dir)
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.metadata().ok())
+        .filter(|m| m.is_file())
+        .map(|m| m.len())
+        .sum()
 }
 
 fn unix(t: SystemTime) -> u64 {
@@ -91,13 +108,14 @@ fn unix(t: SystemTime) -> u64 {
 
 fn audit_client(server: &Server, client: &Client) -> AuditClient {
     let id = client.identity();
-    let state = server.entry_cars[usize::from(id.session_id)].state();
+    let (car_model, skin) =
+        server.entry_cars[usize::from(id.session_id)].read(|s| (s.model.clone(), s.skin.clone()));
     AuditClient {
         name: id.name.clone(),
         steam_id: id.steam_id(),
         session_id: id.session_id,
-        car_model: state.model,
-        skin: state.skin,
+        car_model,
+        skin,
     }
 }
 
@@ -119,6 +137,7 @@ impl Report {
             public_ip: server_cfg.public_ip,
             events: Mutex::new(VecDeque::new()),
             replays: Mutex::new(HashMap::new()),
+            last_upload: Mutex::new(HashMap::new()),
         })
     }
 
@@ -143,13 +162,23 @@ impl Report {
         }
     }
 
-    fn upload(&self, server: &Server, request: &PluginRequest) -> PluginResponse {
+    /// The uploading client, or the refusal: a bad key or source, the
+    /// player's last clip too recent, or no room left on disk. Runs before
+    /// the body is read and again after.
+    fn check_upload(
+        &self,
+        server: &Server,
+        request: &PluginRequest,
+    ) -> Result<Arc<Client>, PluginResponse> {
+        if request.method != "POST" {
+            return Err(PluginResponse::status(405));
+        }
         let id = request
             .headers
             .get("x-car-index")
             .and_then(|v| v.trim().parse::<u8>().ok());
         let Some(client) = id.and_then(|id| server.client_in(id)) else {
-            return PluginResponse::status(400);
+            return Err(PluginResponse::status(400));
         };
         let key_ok = request
             .query
@@ -159,18 +188,40 @@ impl Report {
             .peer
             .is_some_and(|ip| ip.is_loopback() || ip == client.peer.ip());
         if !key_ok || !same_host {
-            return PluginResponse::status(403);
+            return Err(PluginResponse::status(403));
         }
         let guid = client.identity().steam_id();
         let now = SystemTime::now();
-        if let Some(last) = self.replays.lock().get(&guid)
-            && now.duration_since(last.at).unwrap_or_default() < MIN_REPORT_INTERVAL
+        if let Some(last) = self.last_upload.lock().get(&guid)
+            && now.duration_since(*last).unwrap_or_default() < MIN_REPORT_INTERVAL
         {
             server.send_chat_to(
                 &client,
                 "Please wait a moment before submitting another replay.",
             );
-            return PluginResponse::status(429);
+            return Err(PluginResponse::status(429));
+        }
+        if dir_bytes(std::path::Path::new(REPORTS_DIR)) >= MAX_REPORTS_BYTES {
+            tracing::warn!(
+                dir = REPORTS_DIR,
+                "replay refused: the reports folder is full"
+            );
+            return Err(PluginResponse::status(507));
+        }
+        Ok(client)
+    }
+
+    fn upload(&self, server: &Server, request: &PluginRequest) -> PluginResponse {
+        let client = match self.check_upload(server, request) {
+            Ok(client) => client,
+            Err(refusal) => return refusal,
+        };
+        let guid = client.identity().steam_id();
+        let now = SystemTime::now();
+        {
+            let mut last = self.last_upload.lock();
+            last.retain(|_, at| now.duration_since(*at).unwrap_or_default() < MIN_REPORT_INTERVAL);
+            last.insert(guid, now);
         }
         let replay_id = format!("{:032x}", rand::random::<u128>());
         let base = std::path::Path::new(REPORTS_DIR);
@@ -196,7 +247,6 @@ impl Report {
             guid,
             Replay {
                 id: replay_id.clone(),
-                at: now,
                 submitted: false,
             },
         );
@@ -292,12 +342,16 @@ impl Plugin for Report {
         path == "/report"
     }
 
-    fn http(&self, server: &Arc<Server>, request: &PluginRequest) -> Option<PluginResponse> {
+    fn admit(&self, server: &Arc<Server>, request: &PluginRequest) -> Option<PluginResponse> {
         if request.path != "/report" {
             return None;
         }
-        if request.method != "POST" {
-            return Some(PluginResponse::status(405));
+        self.check_upload(server, request).err()
+    }
+
+    fn http(&self, server: &Arc<Server>, request: &PluginRequest) -> Option<PluginResponse> {
+        if request.path != "/report" {
+            return None;
         }
         Some(self.upload(server, request))
     }
@@ -351,6 +405,7 @@ mod tests {
             public_ip: public_ip.map(|ip| ip.parse().expect("ip")),
             events: Mutex::new(VecDeque::new()),
             replays: Mutex::new(HashMap::new()),
+            last_upload: Mutex::new(HashMap::new()),
         }
     }
 

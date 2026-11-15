@@ -75,7 +75,7 @@ impl Server {
     pub fn active_cars(&self) -> Vec<Arc<EntryCar>> {
         self.entry_cars
             .iter()
-            .filter(|car| car.occupied() || car.state().ai_mode != AiMode::None)
+            .filter(|car| car.occupied() || car.read(|s| s.ai_mode) != AiMode::None)
             .cloned()
             .collect()
     }
@@ -142,23 +142,24 @@ impl Server {
         let own_id = client.session_id();
         let listed = self.listed_cars();
         for car in &listed {
-            let state = car.state();
-            let compound = state.tyre_compound;
+            let (compound, p2p_count, pit_done) =
+                car.read(|s| (s.tyre_compound.clone(), s.p2p_count, s.mandatory_pit_done));
             if car.session_id != own_id && !compound.is_empty() {
                 self.send_tyre_compound(client, car.session_id, &compound);
             }
-            self.send_p2p(client, car.session_id, state.p2p_count, false);
-            self.send_mandatory_pit(client, car.session_id, state.mandatory_pit_done);
+            self.send_p2p(client, car.session_id, p2p_count, false);
+            self.send_mandatory_pit(client, car.session_id, pit_done);
         }
-        self.send_bop(client, &self.listed_cars());
+        self.send_tcp(client, &self.build_bop(&listed));
         // Then, in vanilla's order (onConnectionFirstUpdate): the plugin's
         // 0x3A, the welcome message, the fixed setup and the DRS zones, each
         // only when there is one.
         self.plugin().on_client_first_update(client);
-        if !self.welcome_text(client).is_empty() {
-            self.send_welcome(client);
+        let welcome = self.welcome_text(client);
+        if !welcome.is_empty() {
+            self.send_welcome(client, &welcome);
         }
-        let setup = self.entry_cars[usize::from(own_id)].state().setup;
+        let setup = self.entry_cars[usize::from(own_id)].read(|s| s.setup.clone());
         self.send_car_setup(client, &setup);
         self.send_drs_zones(client);
 

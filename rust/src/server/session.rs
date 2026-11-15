@@ -542,6 +542,7 @@ impl Server {
     /// server down. A last race with REVERSED_GRID_RACE_POSITIONS first runs
     /// again on a reversed grid (docs/02 0x4A).
     pub(crate) fn advance_from(self: &Arc<Self>, from: usize) -> bool {
+        let _switch = self.session_switch.lock();
         if self.sessions.lock().current_index != from {
             return false;
         }
@@ -736,6 +737,7 @@ impl Server {
             tracing::warn!("session restart stalled: a client is still loading");
             return false;
         }
+        let _switch = self.session_switch.lock();
         let (_, idx) = self.sessions.current();
         // A restart reverts the grid to entry-list order and drops the
         // session's rubber (docs/02 0x4A).

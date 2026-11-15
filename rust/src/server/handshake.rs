@@ -271,7 +271,7 @@ impl Server {
             if car.occupied() || !car.listed() {
                 return false;
             }
-            let booking = car.state().driver;
+            let booking = car.read(|s| s.driver.clone());
             client.set_identity(ClientIdentity {
                 session_id: car.session_id,
                 guid: guid_str.to_string(),
@@ -340,7 +340,7 @@ impl Server {
                 continue;
             }
             if car.reserved_for(&guid_str)
-                || (!car.reserved() && car.state().driver.guid == guid_str)
+                || car.read(|s| s.guids.is_empty() && s.driver.guid == guid_str)
             {
                 return Some((Arc::clone(car), false));
             }
@@ -353,7 +353,7 @@ impl Server {
             if !free(car) || car.reserved() {
                 continue;
             }
-            if car.state().driver.guid.is_empty() {
+            if car.read(|s| s.driver.guid.is_empty()) {
                 return Some((Arc::clone(car), true));
             }
             if fallback.is_none() {
@@ -376,7 +376,7 @@ impl Server {
         self.entry_cars.iter().any(|car| {
             car.reserved_for(guid)
                 && car.model().eq_ignore_ascii_case(model)
-                && !car.state().driver_name.trim().is_empty()
+                && car.read(|s| !s.driver_name.trim().is_empty())
         })
     }
 
@@ -419,10 +419,8 @@ impl Server {
             self.resort_ranking();
         }
 
-        let reserved = car.reserved();
-        let state = car.state();
-        let reserved_name = state.driver_name;
-        let reserved_team = state.team;
+        let (reserved, reserved_name, reserved_team) =
+            car.read(|s| (!s.guids.is_empty(), s.driver_name.clone(), s.team.clone()));
         client.set_identity(ClientIdentity {
             session_id: car.session_id,
             guid: guid.to_string(),
@@ -468,7 +466,7 @@ impl Server {
         w.string8(&cfg.track);
         w.string8(&cfg.track_config);
         w.string8(&model);
-        w.string8(&car.state().skin);
+        w.string8(&car.skin());
         w.f32(weather.sun_angle);
         w.i16(cfg.allowed_tyres_out);
         w.bool(cfg.tyre_blankets_allowed);

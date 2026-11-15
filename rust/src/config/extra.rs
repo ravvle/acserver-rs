@@ -248,6 +248,10 @@ impl ExtraConfig {
 
     fn validate(&self) -> Result<(), String> {
         self.ai_params.validate()?;
+        // 0 would drop every player the moment their handshake completes.
+        if self.player_loading_timeout_minutes <= 0 {
+            return Err("PlayerLoadingTimeoutMinutes must be above 0".to_string());
+        }
         if self.live.enable_anti_afk && self.live.max_afk_time_minutes <= 0 {
             return Err("MaxAfkTimeMinutes must be above 0".to_string());
         }

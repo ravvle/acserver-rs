@@ -24,13 +24,15 @@ pub struct ChecksumInfo {
     data_acd: Option<[u8; 16]>,
 }
 
-/// Streams `path` into `hasher`, so a large track kn5 is never held in
-/// memory whole.
-fn hash_into(hasher: &mut Md5, path: &Path) -> std::io::Result<()> {
+/// The read buffer for hashing.
+const HASH_BUFFER_BYTES: usize = 1 << 20;
+
+/// Streams `path` into `hasher` through `buf`, so a large track kn5 is never
+/// held in memory whole.
+fn hash_into(hasher: &mut Md5, path: &Path, buf: &mut [u8]) -> std::io::Result<()> {
     let mut file = std::fs::File::open(path)?;
-    let mut buf = vec![0; 1 << 20];
     loop {
-        match file.read(&mut buf)? {
+        match file.read(buf)? {
             0 => return Ok(()),
             n => hasher.update(&buf[..n]),
         }
@@ -39,7 +41,7 @@ fn hash_into(hasher: &mut Md5, path: &Path) -> std::io::Result<()> {
 
 fn md5_file(path: &Path) -> std::io::Result<[u8; 16]> {
     let mut hasher = Md5::new();
-    hash_into(&mut hasher, path)?;
+    hash_into(&mut hasher, path, &mut vec![0; HASH_BUFFER_BYTES])?;
     Ok(hasher.finalize().into())
 }
 
@@ -59,22 +61,47 @@ fn md5_folder(dir: &Path) -> std::io::Result<[u8; 16]> {
     }
     files.sort_by_key(|path| path.to_string_lossy().to_lowercase());
     let mut hasher = Md5::new();
+    let mut buf = vec![0; HASH_BUFFER_BYTES];
     for file in &files {
-        hash_into(&mut hasher, file)?;
+        hash_into(&mut hasher, file, &mut buf)?;
     }
     Ok(hasher.finalize().into())
 }
 
 impl Server {
-    /// A model's checksum info, built on first use.
+    /// Hashes every model a driver can join with, as vanilla's
+    /// InitChecksums does at start, so no join waits on gigabytes of track
+    /// files.
+    pub(crate) fn warm_checksums(&self) {
+        if self.cfg.content_dir.is_none() {
+            return;
+        }
+        let started = std::time::Instant::now();
+        let mut models = self.cfg.distinct_models();
+        for model in &self.cfg.server.cars {
+            if !models.contains(model) {
+                models.push(model.clone());
+            }
+        }
+        for model in &models {
+            self.checksum_info_for(model);
+        }
+        tracing::info!(
+            models = models.len(),
+            secs = started.elapsed().as_secs_f32(),
+            "checksums computed"
+        );
+    }
+
+    /// A model's checksum info, built on first use. The hashing runs outside
+    /// the cache lock, so it holds up no lookup of another model.
     pub(crate) fn checksum_info_for(&self, model: &str) -> Arc<ChecksumInfo> {
-        let mut cache = self.checksum_cache.lock();
-        if let Some(info) = cache.get(model) {
+        if let Some(info) = self.checksum_cache.lock().get(model) {
             return Arc::clone(info);
         }
         let info = Arc::new(self.build_checksum_info(model));
-        cache.insert(model.to_string(), Arc::clone(&info));
-        info
+        let mut cache = self.checksum_cache.lock();
+        Arc::clone(cache.entry(model.to_string()).or_insert(info))
     }
 
     fn build_checksum_info(&self, model: &str) -> ChecksumInfo {

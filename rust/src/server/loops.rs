@@ -53,11 +53,15 @@ struct PassSettings {
 /// The most cars in one `0xAB 0x03`, as AssettoServer sends.
 const CUSTOM_UPDATE_BATCH: usize = 20;
 
-/// One receiver's `0xAB 0x03` under construction.
+/// Where a `0xAB 0x03` carries its car count: after the two ids.
+const CUSTOM_UPDATE_COUNT: usize = 2;
+
+/// One receiver's `0xAB 0x03` under construction: the header, then the
+/// cars, written in place.
 #[derive(Default)]
 pub(crate) struct CustomBatch {
     count: u8,
-    body: Vec<u8>,
+    packet: Writer,
 }
 
 /// Appends one car to a `0xAB 0x03` body: the 0x46 fields with the sender
@@ -291,11 +295,14 @@ impl Server {
     /// (docs/03 0x46). SLEEP_TIME below 1 runs as 1: vanilla spins there.
     pub(crate) fn relay_loop(self: Arc<Self>) {
         let busy_sleep = self.cfg.server.sleep_time.max(Duration::from_millis(1));
+        // Reused every pass, so a pass allocates nothing for them.
+        let mut ready: Vec<ReadyClient> = Vec::new();
+        let mut batches: Vec<CustomBatch> = Vec::new();
         while !self.shutdown.is_cancelled() {
             // Who is ready, read once for the whole pass rather than by
             // locking every slot again in each step.
-            let ready = self.ready_clients();
-            self.relay_pass(&ready);
+            self.ready_clients(&mut ready);
+            self.relay_pass(&ready, &mut batches);
             let uptime_us = self.uptime_us();
             self.maybe_tick(uptime_us, &ready);
             // The rest of vanilla's Step, in its order: pings, sun, race start.
@@ -356,35 +363,35 @@ impl Server {
         }
     }
 
-    /// The ready clients, with what the relay needs from each.
-    fn ready_clients(&self) -> Vec<ReadyClient> {
-        let mut ready = Vec::new();
+    /// Refills `ready` with the ready clients and what the relay needs from
+    /// each.
+    fn ready_clients(&self, ready: &mut Vec<ReadyClient>) {
+        ready.clear();
         for car in &self.entry_cars {
             if let Some(client) = car.client()
                 && client.ready()
             {
+                let (own, offset) = car.position_and_offset();
                 let spectated = client.csp.spectating.load(Ordering::SeqCst);
-                let watched = if spectated > 0 {
-                    self.entry_cars.get(spectated as usize - 1).unwrap_or(car)
-                } else {
-                    car
+                let view = match self.entry_cars.get((spectated as usize).wrapping_sub(1)) {
+                    Some(watched) if spectated > 0 => watched.last_position(),
+                    _ => own,
                 };
                 ready.push(ReadyClient {
-                    view: watched.last_position(),
+                    view,
                     session_id: car.session_id,
                     addr: client.udp_addr(),
-                    offset: car.relay_offset(),
+                    offset,
                     custom_update: client.csp.custom_update.load(Ordering::SeqCst),
                     client,
                 });
             }
         }
-        ready
     }
 
     /// Relays each pending car's latest position once, in slot order, at the
     /// tiers the last tick ranked. A pass with nothing pending skips the work.
-    fn relay_pass(&self, ready: &[ReadyClient]) {
+    fn relay_pass(&self, ready: &[ReadyClient], batches: &mut Vec<CustomBatch>) {
         let pending = self
             .entry_cars
             .iter()
@@ -395,7 +402,7 @@ impl Server {
         let pass = PassSettings {
             live: self.live().extra,
         };
-        let mut batches: Vec<CustomBatch> = Vec::new();
+        // Every batch is empty between passes; only their buffers carry over.
         batches.resize_with(ready.len(), CustomBatch::default);
         for car in &self.entry_cars {
             if !car.relay_pending.swap(false, Ordering::SeqCst) {
@@ -403,10 +410,10 @@ impl Server {
             }
             let Some(client) = car.client() else { continue };
             if let Some((pos, offset)) = car.pending_relay() {
-                self.relay_position(&client, &pos, offset, &pass, ready, &mut batches);
+                self.relay_position(&client, &pos, offset, &pass, ready, batches);
             }
         }
-        self.flush_custom_batches(ready, &mut batches);
+        self.flush_custom_batches(ready, batches);
     }
 
     /// Adds one car to a custom-update receiver's batch, sending it when
@@ -420,9 +427,13 @@ impl Server {
         timestamp: u32,
         pos: &PositionUpdate,
     ) {
-        let mut w = Writer::with_capacity(60);
-        write_custom_update_entry(&mut w, session_id, ping, timestamp, pos);
-        batch.body.extend_from_slice(w.bytes());
+        if batch.count == 0 {
+            batch.packet.clear();
+            batch.packet.u8(proto::EXTENDED);
+            batch.packet.u8(proto::EXT_UDP_CUSTOM_UPDATE);
+            batch.packet.u8(0); // the count, set when sent
+        }
+        write_custom_update_entry(&mut batch.packet, session_id, ping, timestamp, pos);
         batch.count += 1;
         if usize::from(batch.count) == CUSTOM_UPDATE_BATCH {
             self.send_custom_batch(receiver, batch);
@@ -440,15 +451,10 @@ impl Server {
 
     fn send_custom_batch(&self, receiver: &ReadyClient, batch: &mut CustomBatch) {
         if let Some(addr) = receiver.addr {
-            let mut w = Writer::with_capacity(3 + batch.body.len());
-            w.u8(proto::EXTENDED);
-            w.u8(proto::EXT_UDP_CUSTOM_UPDATE);
-            w.u8(batch.count);
-            w.raw(&batch.body);
-            self.send_udp(w.bytes(), addr);
+            batch.packet.set_u8(CUSTOM_UPDATE_COUNT, batch.count);
+            self.send_udp(batch.packet.bytes(), addr);
         }
         batch.count = 0;
-        batch.body.clear();
     }
 
     /// Forwards the sender's latest 0x46 to every other ready client, as

@@ -50,6 +50,14 @@ impl ClientIdentity {
 /// and in one burst.
 const CSP_MESSAGE_BURST: u32 = 30;
 
+/// TCP packets a client may send a second, and in one burst, that the
+/// server relays to the other players (`Server::dispatch_tcp`). Every one
+/// lands in each receiver's `SEND_QUEUE_DEPTH`-frame queue, so without it one
+/// client could overflow every other player's queue and have them dropped.
+/// A real client sends a few a lap.
+const TCP_RELAY_PER_SECOND: u32 = 30;
+const TCP_RELAY_BURST: u32 = 100;
+
 /// Holds four full 255-car leaderboard rounds per client.
 pub const SEND_QUEUE_DEPTH: usize = 1024;
 
@@ -173,6 +181,8 @@ pub struct Client {
     /// Vanilla relays without limit, so one client could flood every other
     /// player; the budget sits far above any real client's send rate.
     pub(crate) position_budget: Budget,
+    /// Relayed TCP packets (`TCP_RELAY_PER_SECOND`).
+    pub(crate) relay_budget: Budget,
 
     /// Suppresses the 0x4D: vanilla sends only the 0x68 for a kick.
     pub(crate) kicked: AtomicBool,
@@ -228,6 +238,7 @@ impl Client {
             }),
             far_positions: Mutex::new(Vec::new()),
             position_budget: budget(position_rate, position_rate / 2),
+            relay_budget: budget(TCP_RELAY_PER_SECOND, TCP_RELAY_BURST),
             kicked: AtomicBool::new(false),
             disconnected: AtomicBool::new(false),
             // Never: a first chat is never rate-limited.

@@ -228,8 +228,18 @@ impl Server {
         }
     }
 
-    /// Routes a post-handshake TCP packet to its handler.
+    /// Routes a post-handshake TCP packet to its handler. A packet the
+    /// server relays to the other players spends the sender's relay budget;
+    /// past it the packet is dropped.
     fn dispatch_tcp(self: &Arc<Self>, client: &Arc<Client>, id: u8, r: &mut Reader) {
+        if relayed(id) && client.relay_budget.check().is_err() {
+            tracing::debug!(
+                id,
+                car = client.session_id(),
+                "tcp packet dropped: relay budget"
+            );
+            return;
+        }
         match id {
             proto::CLEAN_EXIT_DRIVE => self.disconnect(client, "quit"),
             // Vanilla kicks a client that sends 0x3B (docs/02 0x3B).
@@ -341,6 +351,25 @@ impl Server {
             }
         }
     }
+}
+
+/// Whether the server relays a client's TCP packet to the other players.
+/// Chat is metered in `handle_chat`, where CSP's data lines take the CSP
+/// budget instead, and 0xAB by the CSP budget.
+fn relayed(id: u8) -> bool {
+    matches!(
+        id,
+        proto::P2P_UPDATE
+            | proto::MANDATORY_PIT_UPDATE
+            | proto::TYRE_COMPOUND_CHANGE
+            | proto::DAMAGE_UPDATE
+            | proto::SECTOR_SPLIT
+            | proto::LAP_COMPLETED
+            | proto::VOTE_NEXT_SESSION
+            | proto::VOTE_RESTART_SESSION
+            | proto::VOTE_KICK_USER
+            | proto::CLIENT_EVENT
+    )
 }
 
 /// The next packet, or `None` if `deadline` passes first.

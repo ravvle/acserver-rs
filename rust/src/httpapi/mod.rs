@@ -7,7 +7,9 @@ pub mod lobby;
 mod manager;
 
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Json;
 use axum::extract::{Request, State};
@@ -23,6 +25,26 @@ use crate::server::Server;
 /// The largest request body read (only /RECONFIG's form posts have one).
 const MAX_BODY_BYTES: usize = 64 * 1024;
 
+/// How long a request's headers may take to arrive, an idle keep-alive
+/// connection's wait for its next request included.
+const HEADER_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// How long a request body may take to arrive.
+const BODY_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// The most HTTP connections open at once; more are closed on accept.
+const MAX_CONNECTIONS: usize = 256;
+
+/// How long shutdown waits for open requests to finish.
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
+
+/// What every request handler shares.
+struct Http {
+    server: Arc<Server>,
+    /// What /api/details lists from disk, read on first use.
+    content: content::ContentCache,
+}
+
 /// Serves the HTTP API on HTTP_PORT until shutdown.
 pub async fn serve(server: Arc<Server>) -> anyhow::Result<()> {
     let port = server.cfg.server.http_port;
@@ -36,14 +58,60 @@ pub async fn serve(server: Arc<Server>) -> anyhow::Result<()> {
     let app = axum::Router::new()
         .fallback(handle)
         .layer(cors)
-        .with_state(Arc::clone(&server));
+        .with_state(Arc::new(Http {
+            server: Arc::clone(&server),
+            content: content::ContentCache::default(),
+        }));
     let shutdown = server.shutdown.clone();
-    // The peer address, for plugins that check who calls them.
-    let app = app.into_make_service_with_connect_info::<std::net::SocketAddr>();
-    axum::serve(listener, app)
-        .with_graceful_shutdown(async move { shutdown.cancelled().await })
-        .await?;
+    let connections = Arc::new(tokio::sync::Semaphore::new(MAX_CONNECTIONS));
+    let tasks = tokio_util::task::TaskTracker::new();
+    while let Some(accepted) = shutdown.run_until_cancelled(listener.accept()).await {
+        let Ok((stream, peer)) = accepted else {
+            continue;
+        };
+        let Ok(permit) = Arc::clone(&connections).try_acquire_owned() else {
+            tracing::debug!(%peer, "http connection refused: too many open");
+            continue;
+        };
+        let (app, shutdown) = (app.clone(), shutdown.clone());
+        tasks.spawn(async move {
+            serve_connection(stream, peer, app, shutdown).await;
+            drop(permit);
+        });
+    }
+    tasks.close();
+    tasks.wait().await;
     Ok(())
+}
+
+/// Serves one connection's requests until it closes, the peer is too slow
+/// sending headers, or shutdown.
+async fn serve_connection(
+    stream: tokio::net::TcpStream,
+    peer: SocketAddr,
+    app: axum::Router,
+    shutdown: tokio_util::sync::CancellationToken,
+) {
+    use tower::ServiceExt as _;
+    let service = hyper::service::service_fn(move |mut request: Request<hyper::body::Incoming>| {
+        // The peer address, for plugins that check who calls them.
+        request
+            .extensions_mut()
+            .insert(axum::extract::ConnectInfo(peer));
+        app.clone().oneshot(request)
+    });
+    let connection = hyper::server::conn::http1::Builder::new()
+        .timer(hyper_util::rt::TokioTimer::new())
+        .header_read_timeout(HEADER_TIMEOUT)
+        .serve_connection(hyper_util::rt::TokioIo::new(stream), service);
+    tokio::pin!(connection);
+    tokio::select! {
+        _ = connection.as_mut() => {}
+        _ = shutdown.cancelled() => {
+            connection.as_mut().graceful_shutdown();
+            let _ = tokio::time::timeout(SHUTDOWN_GRACE, connection).await;
+        }
+    }
 }
 
 /// The parts of a request the handlers use.
@@ -55,7 +123,8 @@ struct Incoming {
 
 /// Every request. Vanilla routes by path prefix, which a fixed route table
 /// cannot express, so one handler dispatches.
-async fn handle(State(server): State<Arc<Server>>, request: Request) -> Response {
+async fn handle(State(http): State<Arc<Http>>, request: Request) -> Response {
+    let server = &http.server;
     let raw_path = request.uri().path().to_string();
     let path = percent_encoding::percent_decode_str(&raw_path)
         .decode_utf8_lossy()
@@ -69,10 +138,10 @@ async fn handle(State(server): State<Arc<Server>>, request: Request) -> Response
     tracing::debug!(method = %request.method(), path = %path, "http request");
 
     if path == "/api/details" {
-        return details::handle_details(&server, &query);
+        return details::handle_details(server, &query, &http.content);
     }
     if let Some(index) = path.strip_prefix("/api/scripts/") {
-        return handle_script(&server, index);
+        return handle_script(server, index);
     }
     if path == "/api/configuration" {
         let method = request.method().to_string();
@@ -89,20 +158,25 @@ async fn handle(State(server): State<Arc<Server>>, request: Request) -> Response
             .into_response();
     }
     if server.plugin_owns_path(&path) {
-        return handle_plugin(&server, path, query, request).await;
+        return handle_plugin(server, path, query, request).await;
     }
     if path.starts_with("/content/") {
-        return content::handle_content(&server, &path, &query, request).await;
+        return content::handle_content(server, &path, &query, request).await;
     }
-    let body = axum::body::to_bytes(request.into_body(), MAX_BODY_BYTES)
-        .await
-        .unwrap_or_default();
+    let read = axum::body::to_bytes(request.into_body(), MAX_BODY_BYTES);
+    let Ok(body) = tokio::time::timeout(BODY_TIMEOUT, read).await else {
+        return StatusCode::REQUEST_TIMEOUT.into_response();
+    };
+    let body = body.unwrap_or_default();
     let incoming = Incoming { path, query };
-    handle_root(&server, &incoming, &body).await
+    handle_root(server, &incoming, &body).await
 }
 
 /// The largest request body a plugin route reads (ReportPlugin's clips).
 const MAX_PLUGIN_BODY_BYTES: usize = 64 << 20;
+
+/// How long a plugin route's body may take to arrive: a clip is megabytes.
+const PLUGIN_BODY_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// A route an EnablePlugins plugin owns.
 async fn handle_plugin(
@@ -117,29 +191,39 @@ async fn handle_plugin(
         .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
         .map(|info| info.0.ip());
     let headers = header_map(request.headers());
-    let Ok(body) = axum::body::to_bytes(request.into_body(), MAX_PLUGIN_BODY_BYTES).await else {
-        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
-    };
-    let incoming = crate::server::PluginRequest {
+    let mut incoming = crate::server::PluginRequest {
         method,
         path,
         query,
         headers,
         peer,
-        body: body.to_vec(),
+        body: bytes::Bytes::new(),
     };
+    if let Some(r) = server.plugin_admit(&incoming) {
+        return plugin_response(r);
+    }
+    let read = axum::body::to_bytes(request.into_body(), MAX_PLUGIN_BODY_BYTES);
+    match tokio::time::timeout(PLUGIN_BODY_TIMEOUT, read).await {
+        Ok(Ok(body)) => incoming.body = body,
+        Ok(Err(_)) => return StatusCode::PAYLOAD_TOO_LARGE.into_response(),
+        Err(_) => return StatusCode::REQUEST_TIMEOUT.into_response(),
+    }
     let server = Arc::clone(server);
     // A plugin may write files; keep that off the async workers.
     let answer = tokio::task::spawn_blocking(move || server.plugin_http(&incoming)).await;
     match answer {
-        Ok(Some(r)) => (
-            StatusCode::from_u16(r.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-            [(header::CONTENT_TYPE, r.content_type)],
-            r.body,
-        )
-            .into_response(),
+        Ok(Some(r)) => plugin_response(r),
         _ => not_found(),
     }
+}
+
+fn plugin_response(r: crate::server::PluginResponse) -> Response {
+    (
+        StatusCode::from_u16(r.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+        [(header::CONTENT_TYPE, r.content_type)],
+        r.body,
+    )
+        .into_response()
 }
 
 /// A CSPServerScripts file as Lua, 404 for any other index (docs/05 §5.5).
@@ -375,7 +459,7 @@ fn build_entry_list(server: &Server, guid: &str) -> EntryListResponse {
         let id = car.identity();
         cars.push(EntryCarJson {
             model: car.model(),
-            skin: car.state().skin,
+            skin: car.skin(),
             driver_name: id.name,
             driver_team: id.team.to_string(),
             driver_nation: id.nation.to_string(),
@@ -398,7 +482,7 @@ fn is_entry_list(
     guid: &str,
 ) -> bool {
     if !server.cfg.server.pickup_mode_enabled {
-        return car.state().from_entry_list;
+        return car.read(|s| s.from_entry_list);
     }
     is_admin || !car.reserved() || car.reserved_for(guid) || car.occupied()
 }

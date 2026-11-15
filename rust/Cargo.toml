@@ -18,6 +18,8 @@ flate2 = "1"
 form_urlencoded = "1"
 glam = "0.34"
 half = "2"
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
 governor = { version = "0.10", default-features = false, features = ["std"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 md-5 = "0.11"

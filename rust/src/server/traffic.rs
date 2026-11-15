@@ -305,7 +305,7 @@ impl Server {
     /// Whether no player may take this slot: an `AI=fixed` slot, or any AI
     /// slot when traffic is off, as vanilla never seats a player in one.
     pub(crate) fn ai_only(&self, car: &EntryCar) -> bool {
-        match car.state().ai_mode {
+        match car.read(|s| s.ai_mode) {
             AiMode::None => false,
             AiMode::Fixed => true,
             AiMode::Auto => self.traffic.is_none(),
@@ -501,9 +501,9 @@ impl Server {
                     index: index as u16,
                 };
                 let (old, alive) = {
-                    let s = &mut inner.slots[slot];
-                    let tuning = s.tuning.clone();
-                    let state = &mut s.states[index];
+                    // Disjoint fields, so the tuning is borrowed, not copied.
+                    let AiSlot { tuning, states, .. } = &mut inner.slots[slot];
+                    let state = &mut states[index];
                     if !state.initialized {
                         continue;
                     }
@@ -511,7 +511,7 @@ impl Server {
                     let world = World {
                         spline: &traffic.spline,
                         params: &params,
-                        tuning: &tuning,
+                        tuning,
                         now,
                         slowest_at: &|_| None,
                         players: &[],
@@ -705,12 +705,12 @@ impl Server {
             if !slot.controlled {
                 continue;
             }
-            let tuning = slot.tuning.clone();
-            for state in slot.states.iter_mut() {
+            let AiSlot { tuning, states, .. } = slot;
+            for state in states.iter_mut() {
                 let world = World {
                     spline: &traffic.spline,
                     params: &params,
-                    tuning: &tuning,
+                    tuning,
                     now,
                     slowest_at: &slowest_at,
                     players: &players,

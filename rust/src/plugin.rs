@@ -236,7 +236,7 @@ impl PluginManager {
         w.wstring8(&ident.guid);
         w.u8(ident.session_id);
         w.string8(&car.model());
-        w.string8(&car.state().skin);
+        w.string8(&car.skin());
         self.send(&w);
     }
 
@@ -326,7 +326,7 @@ impl PluginManager {
         };
         w.bool(car.occupied());
         w.wstring8(&car.model());
-        w.wstring8(&car.state().skin);
+        w.wstring8(&car.skin());
         let id = car.identity();
         w.wstring8(&id.name);
         w.wstring8(&id.team.to_string());

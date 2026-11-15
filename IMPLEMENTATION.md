@@ -50,6 +50,13 @@ recorded deviations. The hard-coded abuse limits are tabled in the README
 - **Leaderboard** sorting is stable, so ties keep their order.
 - **`0x52`** settings go out in file order.
 - **Votes.** One vote start per 30 s per driver.
+- **Relayed packets.** Every packet the server passes on to the other
+  players (`0x0D`, `0x0E`, `0x50`, `0x56`, `0x58`, `0x49`, the votes, `0x82`
+  and chat other than CSP data) spends one of 100 tokens per sender, refilled
+  at 30 a second; past them it is dropped. Each relay is a frame in every
+  receiver's 1024-frame send queue, and a full queue drops its receiver, so
+  without the budget one client could empty the server.
+- **`0x82`.** A packet's jump starts are relayed once, however many it lists.
 
 ## UDP (doc 3)
 
@@ -121,6 +128,12 @@ recorded deviations. The hard-coded abuse limits are tabled in the README
   Only entry-list models are offered, and only when the folder holds a model
   (a `.kn5` other than `collider.kn5`), so a content tree trimmed to checksum
   data offers nothing.
+- **Limits.** At most 256 connections are open at once; more are closed on
+  accept. A request's headers must arrive within 5 s, which also closes an
+  idle keep-alive connection, and its body within 15 s (60 s on a plugin
+  route). A plugin may refuse a request before its body is read.
+- **`/api/details`** reads which configured cars and track are on disk, and
+  their versions, once; skins are checked on every request.
 - `/api/scripts/<n>` serves the local `CSPServerScripts` and the built-in
   scripts. `/assets/*` is not served.
 - **Lobby.** Joins and leaves are polled every 5 s for the subscriptions
@@ -150,7 +163,11 @@ logins when there is no admin password.
 ## Results and config (doc 8)
 
 - Results are written under the cfg directory, with `_<server name>` added to
-  the file name.
+  the file name. Each car records at most 1000 laps and 500 collisions a
+  session; nothing is recorded with `WriteResultJson` off.
+- Checksums of every entry-list and `CARS` model are computed at start, as
+  vanilla's InitChecksums does.
+- `PlayerLoadingTimeoutMinutes` below 1 refuses to start.
 - **INI parsing** (`rust/src/config/ini.rs`) follows vanilla's `//` comment
   rule and default name, but trims keys, values and section headers and skips
   a BOM. It keeps surrounding quotes and reads decimal numbers only.
@@ -193,11 +210,13 @@ The features follow AssettoServer 0.0.54, with these differences:
   `EnableUdpClientMessages`, and `EMOJI` is always listed.
 - **ReportPlugin.** `<host>` is `ServerAddress`, else the public IP looked up
   from ip-api.com at start, with `HTTP_PORT`. An upload must come from the
-  `X-Car-Index` client's IP (or loopback) with the right key. Replies: `200`
+  `X-Car-Index` client's IP (or loopback) with the right key, checked before
+  the body is read. Replies: `200`
   saved as `reports/<id>.zip` and `<id>.json` (entry list and the last
   `ClipDurationSeconds` of joins, leaves and chat), `400` no client in that
   slot, `403` wrong key or IP, `405` not `POST`, `429` under 30 s since the
-  player's last clip, `500` not written. `WebhookUrl` is ignored.
+  player's last clip (reconnecting does not reset it), `507` `reports/`
+  already holds 2 GiB, `500` not written. `WebhookUrl` is ignored.
 - **RaceChallengePlugin** gives the race to the follower when the leader
   teleports (over 200 m in one check); AssettoServer means to, but its swap
   assigns one car to both places.

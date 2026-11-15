@@ -418,6 +418,8 @@ impl Plugin for RaceChallenge {
             }
             "accept" => {
                 let race = races.lock()[usize::from(client.session_id())].race.clone();
+                // Only the challenged driver accepts.
+                let race = race.filter(|r| r.challenged == client.session_id());
                 match race {
                     None => Some("You do not have a pending race request.".to_string()),
                     Some(r) if r.started.load(Ordering::SeqCst) => {

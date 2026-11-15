@@ -191,32 +191,32 @@ impl Server {
         self.send_tcp(client, w.bytes());
     }
 
-    /// Sends one 0x70 listing `cars`.
-    pub(crate) fn send_bop(&self, client: &Client, cars: &[Arc<EntryCar>]) {
-        let mut w = Writer::with_id(proto::BOP_UPDATE);
+    /// Encodes one 0x70 listing `cars`.
+    pub(crate) fn build_bop(&self, cars: &[Arc<EntryCar>]) -> Vec<u8> {
+        let mut w = Writer::with_capacity(2 + 9 * cars.len());
+        w.u8(proto::BOP_UPDATE);
         w.u8(cars.len() as u8);
         for car in cars {
-            let state = car.state();
+            let (ballast, restrictor) = car.read(|s| (s.ballast, s.restrictor));
             w.u8(car.session_id);
-            w.f32(state.ballast);
-            w.f32(state.restrictor);
+            w.f32(ballast);
+            w.f32(restrictor);
         }
-        self.send_tcp(client, w.bytes());
+        w.into_bytes()
     }
 
     /// Sends every slot's BoP to everyone, as vanilla does after /ballast or
-    /// /restrictor.
+    /// /restrictor. Every copy is the same, so it is built once.
     pub(crate) fn broadcast_bop(&self) {
-        for client in self.broadcast_clients() {
-            self.send_bop(&client, &self.listed_cars());
-        }
+        let payload = self.build_bop(&self.listed_cars());
+        self.broadcast_tcp(&payload, None);
     }
 
-    /// Sends 0x51 to a client.
-    pub(crate) fn send_welcome(&self, client: &Client) {
+    /// Sends 0x51 to a client: `text`, its `welcome_text`.
+    pub(crate) fn send_welcome(&self, client: &Client, text: &str) {
         let mut w = Writer::with_id(proto::WELCOME_MESSAGE);
         w.u8(0);
-        w.wstring16(&self.welcome_text(client));
+        w.wstring16(text);
         self.send_tcp(client, w.bytes());
     }
 

@@ -64,8 +64,9 @@ pub struct Identity {
     pub guid: String,
 }
 
-/// Everything about a slot except its position. Read a copy with
-/// `EntryCar::state` and change it with `EntryCar::update`.
+/// Everything about a slot except its position. Read it with
+/// `EntryCar::read` (or a copy with `EntryCar::state`) and change it with
+/// `EntryCar::update`.
 #[derive(Debug, Clone, SmartDefault)]
 pub struct SlotState {
     // What the entry list sets.
@@ -174,6 +175,17 @@ impl EntryCar {
     /// A copy of the slot's state.
     pub fn state(&self) -> SlotState {
         self.state.lock().clone()
+    }
+
+    /// Reads the slot's state under its lock, without copying the rest. Do
+    /// not call back into the slot from `read`.
+    pub fn read<R>(&self, read: impl FnOnce(&SlotState) -> R) -> R {
+        read(&self.state.lock())
+    }
+
+    /// The slot's skin.
+    pub fn skin(&self) -> String {
+        self.read(|s| s.skin.clone())
     }
 
     /// Changes the slot's state under its lock. Do not call back into the
@@ -333,9 +345,10 @@ impl EntryCar {
         Some((st.pos, st.offset))
     }
 
-    /// The clock offset stored with the last accepted update, 0 if none.
-    pub fn relay_offset(&self) -> i64 {
-        self.position.lock().offset
+    /// `last_position` and `relay_offset` under one lock.
+    pub fn position_and_offset(&self) -> (Option<PositionUpdate>, i64) {
+        let st = self.position.lock();
+        (st.valid.then_some(st.pos), st.offset)
     }
 
     /// Moves the stored clock offset with a clock rebase.

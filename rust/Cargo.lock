@@ -19,6 +19,8 @@ dependencies = [
  "glam",
  "governor",
  "half",
+ "hyper",
+ "hyper-util",
  "maxminddb",
  "md-5",
  "parking_lot 0.13.0",

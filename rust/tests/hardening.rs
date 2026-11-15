@@ -231,3 +231,85 @@ fn admin_brute_force_stops() {
         }
     }
 }
+
+/// Drains a client's TCP stream on its own thread, as a healthy game does.
+fn keep_reading(mut conn: Conn) {
+    std::thread::spawn(move || {
+        conn.set_timeout(Duration::from_secs(10));
+        while conn.read().is_ok() {}
+    });
+}
+
+/// Joins four players who read everything, then one who sends `packet`
+/// `times` times, and checks nobody is dropped: every relayed packet is a
+/// frame in each other player's send queue, which drops its owner when full.
+fn assert_flood_drops_nobody(packet: &[u8], times: usize) {
+    let srv = start(|cfg| fill_grid(cfg, 6));
+    let mut udps = Vec::new();
+    for i in 0..4 {
+        let joined = join_client(&srv, &format!("Victim{i}"));
+        keep_reading(joined.conn);
+        udps.push(joined.udp);
+    }
+    let attacker = join_client(&srv, "Attacker");
+    let sender = attacker.conn.sender();
+    keep_reading(attacker.conn);
+    for _ in 0..times {
+        sender.send(packet);
+    }
+    std::thread::sleep(Duration::from_millis(1500));
+    assert_eq!(srv.server.connected_count(), 5, "a flood dropped players");
+}
+
+/// One 0x82 can list two thousand jump starts; it is relayed once.
+#[test]
+fn jump_start_flood_drops_nobody() {
+    const EVENTS: usize = 2043;
+    let mut w = acserver_rs::wire::Writer::with_id(proto::CLIENT_EVENT);
+    w.i16(EVENTS as i16);
+    w.raw(&[proto::EVENT_JUMP_START; EVENTS]);
+    assert_flood_drops_nobody(w.bytes(), 10);
+}
+
+/// Relayed packets are capped per sender (README "Abuse limits").
+#[test]
+fn relay_flood_drops_nobody() {
+    let mut w = acserver_rs::wire::Writer::with_id(proto::SECTOR_SPLIT);
+    w.u8(0);
+    w.u32(30_000);
+    w.u8(0);
+    assert_flood_drops_nobody(w.bytes(), 5000);
+}
+
+/// An HTTP connection that sends no request, or idles after one, is closed
+/// after the header deadline.
+#[test]
+fn http_idle_connections_close() {
+    use std::io::{Read, Write};
+    let srv = start(|_| {});
+    let closed_within = |mut stream: std::net::TcpStream| {
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .expect("timeout");
+        let started = Instant::now();
+        let mut buf = [0u8; 4096];
+        loop {
+            match stream.read(&mut buf) {
+                Ok(0) => return started.elapsed(),
+                Ok(_) => {}
+                Err(err) => panic!("connection not closed: {err}"),
+            }
+        }
+    };
+    let silent = std::net::TcpStream::connect(("127.0.0.1", srv.http)).expect("connect");
+    let mut idle = std::net::TcpStream::connect(("127.0.0.1", srv.http)).expect("connect");
+    idle.write_all(b"GET /INFO HTTP/1.1\r\nHost: x\r\n\r\n")
+        .expect("request");
+    let (a, b) = std::thread::scope(|s| {
+        let a = s.spawn(|| closed_within(silent));
+        let b = s.spawn(|| closed_within(idle));
+        (a.join().expect("silent"), b.join().expect("idle"))
+    });
+    assert!(a < Duration::from_secs(8), "silent connection open {a:?}");
+    assert!(b < Duration::from_secs(8), "idle keep-alive open {b:?}");
+}

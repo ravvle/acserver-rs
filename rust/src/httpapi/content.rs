@@ -5,6 +5,7 @@
 use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use serde::Serialize;
 use sha1::{Digest, Sha1};
@@ -58,10 +59,54 @@ fn content_root(server: &Server) -> Option<PathBuf> {
     Some(server.cfg.content_dir.as_ref()?.join("content"))
 }
 
+/// What the manifest lists from disk besides skins: each configured model
+/// that has one, with its version, and the track's version if it has one.
+/// Read once: CM asks for /api/details for every listed server, and finding
+/// a model means listing its folder and parsing its UI JSON.
+#[derive(Debug, Default)]
+pub struct ContentCache(OnceLock<DiskContent>);
+
+#[derive(Debug)]
+struct DiskContent {
+    cars: Vec<(String, Option<String>)>,
+    track: Option<Option<String>>,
+}
+
+impl DiskContent {
+    fn scan(server: &Server, content: &Path) -> DiskContent {
+        let mut cars = Vec::new();
+        for model in server.cfg.distinct_models() {
+            let car_dir = content.join("cars").join(&model);
+            if has_model(&car_dir) {
+                let version = ui_version(&car_dir.join("ui").join("ui_car.json"));
+                cars.push((model, version));
+            }
+        }
+        let track_dir = content.join("tracks").join(&server.cfg.server.track);
+        let track = has_model(&track_dir).then(|| {
+            let mut ui_path = track_dir.join("ui").join("ui_track.json");
+            let track_config = &server.cfg.server.track_config;
+            if !track_config.is_empty() {
+                let config_ui = track_dir
+                    .join("ui")
+                    .join(track_config)
+                    .join("ui_track.json");
+                if config_ui.is_file() {
+                    ui_path = config_ui;
+                }
+            }
+            ui_version(&ui_path)
+        });
+        DiskContent { cars, track }
+    }
+}
+
 /// The manifest, listing only what is on disk, or `None` if there is
-/// nothing to serve.
-pub fn build_content(server: &Server) -> Option<ContentManifest> {
+/// nothing to serve. Skins are checked on each call, since bookings change
+/// them.
+pub fn build_content(server: &Server, cache: &ContentCache) -> Option<ContentManifest> {
     let content = content_root(server)?;
+    let disk = cache.0.get_or_init(|| DiskContent::scan(server, &content));
 
     // Skins in use, per model.
     let mut skins_by_model: HashMap<String, HashSet<String>> = HashMap::new();
@@ -71,20 +116,18 @@ pub fn build_content(server: &Server) -> Option<ContentManifest> {
             continue;
         }
         let skins = skins_by_model.entry(model).or_default();
-        let skin = car.state().skin;
+        let skin = car.skin();
         if !skin.is_empty() {
             skins.insert(skin);
         }
     }
 
     let mut cars: BTreeMap<String, ContentItem> = BTreeMap::new();
-    for model in server.cfg.distinct_models() {
-        let car_dir = content.join("cars").join(&model);
-        if !has_model(&car_dir) {
-            continue; // can't serve what we don't have
-        }
+    // Only models on disk: can't serve what we don't have.
+    for (model, version) in &disk.cars {
+        let car_dir = content.join("cars").join(model);
         let mut skins: BTreeMap<String, ContentUrl> = BTreeMap::new();
-        for skin in skins_by_model.get(&model).into_iter().flatten() {
+        for skin in skins_by_model.get(model).into_iter().flatten() {
             if car_dir.join("skins").join(skin).is_dir() {
                 skins.insert(
                     skin.clone(),
@@ -99,31 +142,16 @@ pub fn build_content(server: &Server) -> Option<ContentManifest> {
             ContentItem {
                 skins: (!skins.is_empty()).then_some(skins),
                 url: format!("/content/car/{model}"),
-                version: ui_version(&car_dir.join("ui").join("ui_car.json")),
+                version: version.clone(),
             },
         );
     }
 
-    let track_dir = content.join("tracks").join(&server.cfg.server.track);
-    let mut track = None;
-    if has_model(&track_dir) {
-        let mut ui_path = track_dir.join("ui").join("ui_track.json");
-        let track_config = &server.cfg.server.track_config;
-        if !track_config.is_empty() {
-            let config_ui = track_dir
-                .join("ui")
-                .join(track_config)
-                .join("ui_track.json");
-            if config_ui.is_file() {
-                ui_path = config_ui;
-            }
-        }
-        track = Some(ContentItem {
-            skins: None,
-            url: "/content/track".to_string(),
-            version: ui_version(&ui_path),
-        });
-    }
+    let track = disk.track.as_ref().map(|version| ContentItem {
+        skins: None,
+        url: "/content/track".to_string(),
+        version: version.clone(),
+    });
 
     if cars.is_empty() && track.is_none() {
         return None;

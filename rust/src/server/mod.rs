@@ -217,6 +217,9 @@ pub struct Server {
     alloc: Mutex<AllocState>,
 
     votes: Mutex<Votes>,
+    /// Held across a session advance or restart, so two that race (a result
+    /// screen ending as an admin skips) cannot both act on one session.
+    session_switch: Mutex<()>,
     recorder: ResultsRecorder,
 
     /// Set once, before `run`.
@@ -415,6 +418,7 @@ impl Server {
                 loaded_entries: cfg.entry_list.clone(),
             }),
             votes: Mutex::default(),
+            session_switch: Mutex::new(()),
             recorder: ResultsRecorder::default(),
             plugin: OnceLock::new(),
             http_client: reqwest::Client::new(),
@@ -423,6 +427,7 @@ impl Server {
             cfg,
         };
         server.check_admin_group_safety()?;
+        server.warm_checksums();
         Ok(Arc::new(server))
     }
 
