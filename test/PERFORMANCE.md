@@ -116,10 +116,12 @@ light.
 
 ## Results
 
-Full test and performance run on 2026-11-04 at commit `e35bb01` (clean
-tree). Every performance test ran **vanilla Kunos acServer v1.15, the Rust
-server and AssettoServer 0.0.54**, one target after another, never in
-parallel.
+The Rust server's figures and the functional tests are from 2026-11-16, at
+commit `08f9a46` plus the dependency update that followed it. **Vanilla Kunos
+acServer v1.15 and AssettoServer 0.0.54** were last measured on 2026-11-04
+(v1.0.0); their numbers are from that run. Every performance test ran one
+target after another, never in parallel, under
+`systemd-inhibit --what=sleep:idle`.
 
 **Host:** a 4-core / 8-thread laptop CPU on Linux. Servers and the simulated clients share this one machine,
 so the clients' own CPU competes with the server's (see Caveats). Rust nightly
@@ -143,10 +145,10 @@ from `rust/rust-toolchain.toml` (release build); the test harness on Go
 | Suite | Command | Result | Wall time |
 |---|---|---|---:|
 | Rust fmt, clippy | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` | clean | <1 s (cached build) |
-| Rust tests | `cargo test` | pass: 127 tests (93 unit, 34 integration), 0 failed | 145 s |
+| Rust tests | `cargo test` | pass: 134 tests (95 unit, 39 integration), 0 failed | 145 s |
 | Go vet, gofmt | `go vet ./...`, `gofmt -l .` | clean | 1 s |
-| Go suite, reference comparison included | `go test -race -timeout 30m ./...` with `AC_REFERENCE_*` set | pass | 648 s |
-| Multi-process grid race | `LOADTEST_CLIENTS=255 LOADTEST_PROCS=5 go test -run TestMultiProcessGridRace .` | pass: 255 clients joined, 255 saw `RaceOver` (join 34–40 ms for three processes, ~1.1 s for two; `RaceOver` 31–37 ms) | 20 s |
+| Go suite, reference comparison included | `go test -race -count=1 -timeout 30m ./...` with the reference install in `kunosserverfiles/` | pass | 789 s |
+| Multi-process grid race | `LOADTEST_CLIENTS=255 LOADTEST_PROCS=5 go test -run TestMultiProcessGridRace .` | pass: 255 clients joined, 255 saw `RaceOver` (join 23–29 ms for two processes, ~1.03 s for three; `RaceOver` 62–68 ms) | 20 s |
 | AI on a real spline | `AI_SPLINE_AIP=<SRP fast_lane.aip> AI_SPLINE_TRACK=shutoko_revival_project_094_ptb1 go test -run TestExtAiOnRealSpline .` | pass: 7 AI cars drove the spline | 11 s |
 
 There are no Rust benches in the repo.
@@ -162,18 +164,18 @@ All 120 players joined and none dropped, on every server.
 | Server | Steady CPU | Overall CPU % | CPU time | Peak RSS | UDP pkts | TCP pkts | **Total pkts** | UDP MiB | of which `0x48` | Positions delivered (players / AI) | Peak up | Avg up | Peak down | Avg down | µs CPU / datagram |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Vanilla (no AI) | 110.1% | 103.2% | 247.8 s | 9.6 MiB | 28,875,894 | 51,145 | 28,927,039 | 1,679 | 0 | 28,850,631 / 0 | 116.8 | 85.7 | 1.59 | 1.48 | 8.58 |
-| Rust | 17.9% | 16.7% | 40.1 s | 19.1 MiB | 4,104,565 | 52,653 | 4,157,218 | 1,182 | 1,148,912 | 13,289,856 / 8,081,401 | 50.9 | 45.2 | 1.60 | 1.48 | 9.76 |
+| Rust | 18.6% | 17.3% | 41.4 s | 19.0 MiB | 4,118,814 | 52,882 | 4,171,696 | 1,176 | 1,140,994 | 13,312,237 / 7,955,268 | 50.6 | 45.0 | 1.59 | 1.48 | 10.06 |
 | AssettoServer | 120.0% | 117.0% | 280.7 s | 181.0 MiB | 15,492,615 | 63,408 | 15,556,023 | 1,526 | 812,353 | 14,654,437 / 12,276,213 | 80.1 | 67.9 | 1.60 | 1.48 | 18.12 |
 
-Steady-state window: Vanilla 24,873,147 datagrams / 24,851,204 car entries, Rust 3,702,175 datagrams / 18,928,886 car entries, AssettoServer 13,868,098 datagrams / 23,948,501 car entries.
+Steady-state window: Vanilla 24,873,147 datagrams / 24,851,204 car entries, Rust 3,718,650 datagrams / 18,859,642 car entries, AssettoServer 13,868,098 datagrams / 23,948,501 car entries.
 
-UDP packets by id: **Vanilla** `46`:28,850,631, `57`:36, `f9`:25,227; **Rust** `46`:2,928,717, `48`:1,148,912, `57`:36, `f9`:26,900; **AssettoServer** `46`:14,654,437, `48`:812,353, `f9`:25,825.
+UDP packets by id: **Vanilla** `46`:28,850,631, `57`:36, `f9`:25,227; **Rust** `46`:2,950,884, `48`:1,140,994, `57`:36, `f9`:26,900; **AssettoServer** `46`:14,654,437, `48`:812,353, `f9`:25,825.
 
 Upload/download in Mbit/s. µs CPU / datagram is not comparable across
 servers here: Rust batches many car positions (and the AI's) into each
 `0x48`, so a datagram carries more work.
 
-- **CPU:** Rust 18% of a core, against vanilla 110% and AssettoServer 120%.
+- **CPU:** Rust 19% of a core, against vanilla 110% and AssettoServer 120%.
   Vanilla and AssettoServer each need more than one core for this load.
 - **Bandwidth:** peak upload vanilla 117 Mbit/s with no AI, AssettoServer 80,
   Rust 51. Batching far cars (and the AI) into `0x48` saves per-datagram
@@ -193,10 +195,10 @@ dropped, on every server. Upload/download in Mbit/s.
 | Server | Race CPU | Overall CPU % | CPU time | Peak RSS | UDP pkts | TCP pkts | **Total pkts** | UDP MiB | of which `0x48` | Positions delivered | Peak up | Avg up | Peak down | Avg down | µs CPU / datagram | Lap broadcasts | `RaceOver` seen |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Vanilla | 9.7% | 9.5% | 29.2 s | 8.9 MiB | 1,260,038 | 2,999 | 1,263,037 | 73 | 0 | 1,254,828 | 3.2 | 2.9 | 0.21 | 0.20 | 23.17 | 784 | 16 |
-| Rust | 2.0% | 2.0% | 6.0 s | 10.9 MiB | 1,126,730 | 2,999 | 1,129,729 | 65 | 969 | 1,123,599 | 3.1 | 2.6 | 0.21 | 0.20 | 5.36 | 784 | 16 |
+| Rust | 2.0% | 1.9% | 5.9 s | 10.6 MiB | 1,126,592 | 3,000 | 1,129,592 | 65 | 1,025 | 1,123,483 | 3.1 | 2.6 | 0.21 | 0.20 | 5.27 | 784 | 16 |
 | AssettoServer | 3.7% | 4.2% | 12.9 s | 140.5 MiB | 1,229,274 | 5,927 | 1,235,201 | 71 | 0 | 1,224,765 | 3.2 | 2.9 | 0.21 | 0.20 | 10.49 | 784 | 0 |
 
-UDP packets by id: **Vanilla** `46`:1,254,828, `57`:519, `f9`:4,691; **Rust** `46`:1,120,534, `48`:969, `57`:520, `f9`:4,707; **AssettoServer** `46`:1,224,765, `f9`:4,509.
+UDP packets by id: **Vanilla** `46`:1,254,828, `57`:519, `f9`:4,691; **Rust** `46`:1,120,340, `48`:1,025, `57`:520, `f9`:4,707; **AssettoServer** `46`:1,224,765, `f9`:4,509.
 
 Positions each car received of each other car, by distance (share of
 pair-time in brackets):
@@ -212,10 +214,10 @@ pair-time in brackets):
 | Server | Race CPU | Overall CPU % | CPU time | Peak RSS | UDP pkts | TCP pkts | **Total pkts** | UDP MiB | of which `0x48` | Positions delivered | Peak up | Avg up | Peak down | Avg down | µs CPU / datagram | Lap broadcasts | `RaceOver` seen |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Vanilla | 21.9% | 21.1% | 64.4 s | 8.9 MiB | 5,181,268 | 11,885 | 5,193,153 | 301 | 0 | 5,170,867 | 13.5 | 12.1 | 0.42 | 0.41 | 12.43 | 3,104 | 32 |
-| Rust | 4.0% | 3.9% | 11.9 s | 11.3 MiB | 4,379,932 | 11,885 | 4,391,817 | 255 | 2,325 | 4,375,903 | 12.8 | 10.3 | 0.43 | 0.41 | 2.72 | 3,104 | 32 |
+| Rust | 3.8% | 3.7% | 11.3 s | 11.4 MiB | 4,381,217 | 11,885 | 4,393,102 | 255 | 2,397 | 4,377,342 | 12.8 | 10.3 | 0.43 | 0.41 | 2.57 | 3,104 | 32 |
 | AssettoServer | 10.3% | 10.5% | 32.1 s | 142.9 MiB | 5,087,912 | 14,137 | 5,102,049 | 296 | 0 | 5,078,919 | 13.9 | 11.9 | 0.43 | 0.41 | 6.32 | 3,104 | 0 |
 
-UDP packets by id: **Vanilla** `46`:5,170,867, `57`:1,049, `f9`:9,352; **Rust** `46`:4,367,170, `48`:2,325, `57`:1,050, `f9`:9,387; **AssettoServer** `46`:5,078,919, `f9`:8,993.
+UDP packets by id: **Vanilla** `46`:5,170,867, `57`:1,049, `f9`:9,352; **Rust** `46`:4,368,383, `48`:2,397, `57`:1,050, `f9`:9,387; **AssettoServer** `46`:5,078,919, `f9`:8,993.
 
 Positions each car received of each other car, by distance (share of
 pair-time in brackets):
@@ -231,10 +233,10 @@ pair-time in brackets):
 | Server | Race CPU | Overall CPU % | CPU time | Peak RSS | UDP pkts | TCP pkts | **Total pkts** | UDP MiB | of which `0x48` | Positions delivered | Peak up | Avg up | Peak down | Avg down | µs CPU / datagram | Lap broadcasts | `RaceOver` seen |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Vanilla | 65.2% | 62.4% | 195.1 s | 9.3 MiB | 21,613,867 | 47,317 | 21,661,184 | 1,256 | 0 | 21,592,608 | 54.9 | 49.4 | 0.85 | 0.82 | 9.02 | 12,352 | 64 |
-| Rust | 21.0% | 20.1% | 63.0 s | 12.0 MiB | 14,941,808 | 47,319 | 14,989,127 | 871 | 14,948 | 14,976,400 | 50.6 | 34.3 | 0.85 | 0.82 | 4.21 | 12,352 | 64 |
+| Rust | 9.2% | 8.8% | 27.7 s | 11.8 MiB | 14,940,137 | 47,317 | 14,987,454 | 871 | 14,729 | 14,974,542 | 50.5 | 34.3 | 0.85 | 0.82 | 1.85 | 12,352 | 64 |
 | AssettoServer | 25.0% | 24.7% | 77.3 s | 149.7 MiB | 21,006,890 | 37,982 | 21,044,872 | 1,221 | 0 | 20,988,437 | 55.4 | 48.0 | 0.85 | 0.82 | 3.68 | 12,352 | 0 |
 
-UDP packets by id: **Vanilla** `46`:21,592,608, `57`:2,075, `f9`:19,184; **Rust** `46`:14,905,527, `48`:14,948, `57`:2,072, `f9`:19,261; **AssettoServer** `46`:20,988,437, `f9`:18,453.
+UDP packets by id: **Vanilla** `46`:21,592,608, `57`:2,075, `f9`:19,184; **Rust** `46`:14,904,073, `48`:14,729, `57`:2,076, `f9`:19,259; **AssettoServer** `46`:20,988,437, `f9`:18,453.
 
 Positions each car received of each other car, by distance (share of
 pair-time in brackets):
@@ -245,14 +247,13 @@ pair-time in brackets):
 | 100–500 m (39.2%) | 18.0 Hz | 4.9 Hz | 17.9 Hz |
 | Over 500 m (2.7%) | 18.1 Hz | 3.6 Hz | 3.7 Hz |
 
-At 64 players Rust's clients also got two `0x4D` (CarDisconnected), from
-clients that left first at the end of the run; the TCP traffic is otherwise
+At 16 players Rust's clients also got one `0x4D` (CarDisconnected), from a
+client that left first at the end of the run; the TCP traffic is otherwise
 the same packets as vanilla's.
 
-- **CPU** (race): Rust 2.0% / 4.0% / 21.0% at 16 / 32 / 64 players, vanilla
+- **CPU** (race): Rust 2.0% / 3.8% / 9.2% at 16 / 32 / 64 players, vanilla
   9.7% / 21.9% / 65.2%, AssettoServer 3.7% / 10.3% / 25.0%. Rust is lowest
-  at every size. At 64 the simulated clients compete for the same 8 threads
-  (see Caveats), so its jump from 32 is partly the host's.
+  at every size, and at 64 players uses a seventh of vanilla's CPU.
 - **Rust sends 11% / 15% / 31% fewer datagrams than vanilla** at 16 / 32 /
   64 players, and as much less data, by thinning cars 100 m and further away.
   The bigger the field, the more cars fall into its lower tiers: the 100–500 m
@@ -269,28 +270,28 @@ the same packets as vanilla's.
 
 ### Relay latency, 2 to 64 players (`TestPerformanceLatency`)
 
-Run on 2026-11-05 at commit `cfcb206` plus this test, on the same host and
-servers, under `systemd-inhibit`. `CLIENT_SEND_INTERVAL_HZ=18`,
+Rust's rows are from 2026-11-16; vanilla's and AssettoServer's are from
+2026-11-05, on the same host. `CLIENT_SEND_INTERVAL_HZ=18`,
 `SLEEP_TIME=1`, a 90 s window from the green light. Every player joined and
 none dropped, on every server. Latencies in ms. *CPU* is the server's over
 the window.
 
-**Floor** (the in-process relay, 540 samples): mean 0.11, p50 0.10, p99 0.24,
-max 1.42.
+**Floor** (the in-process relay, 540 samples): mean 0.12, p50 0.12, p99 0.17,
+max 0.22.
 
 | Players | Server | CPU | Mean | p50 | p90 | p99 | p99.9 | Max | Delivered |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | 2 | Vanilla | 7.4% | 0.72 | 0.74 | 1.13 | 1.32 | 1.57 | 3.75 | 100% |
-| 2 | Rust | 1.2% | 0.81 | 0.87 | 1.14 | 1.29 | 1.47 | 1.98 | 100% |
+| 2 | Rust | 1.2% | 0.82 | 0.88 | 1.14 | 1.28 | 1.51 | 3.14 | 100% |
 | 2 | AssettoServer | 0.7% | 27.9 | 28.5 | 49.7 | 54.5 | 55.4 | 55.7 | 99.9% |
 | 16 | Vanilla | 13.1% | 0.73 | 0.54 | 1.40 | 1.65 | 1.85 | 4.38 | 100% |
-| 16 | Rust | 3.9% | 0.91 | 1.09 | 1.26 | 1.44 | 1.59 | 3.38 | 99.2% |
+| 16 | Rust | 2.3% | 0.80 | 1.05 | 1.16 | 1.28 | 1.39 | 3.51 | 99.2% |
 | 16 | AssettoServer | 4.1% | 27.1 | 27.1 | 49.2 | 54.5 | 55.5 | 55.8 | 99.9% |
 | 32 | Vanilla | 29.3% | 0.86 | 0.61 | 1.76 | 2.27 | 2.71 | 4.64 | 100% |
-| 32 | Rust | 6.0% | 0.83 | 1.08 | 1.32 | 1.59 | 1.94 | 55.9 | 96.4% |
+| 32 | Rust | 4.2% | 0.93 | 1.12 | 1.25 | 1.43 | 1.53 | 56.2 | 96.4% |
 | 32 | AssettoServer | 10.9% | 27.2 | 27.2 | 49.0 | 54.5 | 55.4 | 56.7 | 99.3% |
 | 64 | Vanilla | 78.9% | 3.56 | 3.26 | 6.42 | 9.74 | 16.8 | 34.2 | 100% |
-| 64 | Rust | 13.3% | 0.97 | 1.13 | 1.73 | 2.29 | 2.67 | 35.3 | 75.0% |
+| 64 | Rust | 10.1% | 0.87 | 1.10 | 1.48 | 2.11 | 5.26 | 35.4 | 75.0% |
 | 64 | AssettoServer | 24.6% | 26.8 | 26.6 | 48.6 | 54.4 | 55.4 | 57.9 | 98.1% |
 
 Rust by distance band (p50 / p99 in ms, delivered). Vanilla and AssettoServer
@@ -298,14 +299,14 @@ add the same latency in every band:
 
 | Players | Under 100 m | 100–500 m | Over 500 m |
 |---:|---|---|---|
-| 16 | 1.09 / 1.44, 100% | 1.06 / 1.39, 45% | none |
-| 32 | 1.08 / 1.58, 100% | 0.96 / 1.52, 31% | 48.2 / 50.4, 20% (801 samples) |
-| 64 | 1.13 / 2.30, 99.7% | 1.10 / 2.24, 25% | 32.9 / 34.6, 15% (6 samples) |
+| 16 | 1.05 / 1.28, 100% | 0.99 / 1.22, 46% | none |
+| 32 | 1.12 / 1.42, 99.9% | 1.11 / 1.36, 31% | 48.7 / 56.1, 20% (805 samples) |
+| 64 | 1.10 / 2.11, 99.7% | 1.11 / 2.11, 25% | 26.0 / 28.5, 15% (6 samples) |
 
 - **Vanilla and Rust relay within about 1 ms** up to 32 players: one
   `SLEEP_TIME` relay pass. At 64, vanilla's single main loop runs at 79% CPU,
   and its passes stretch to a 3.3 ms median and a 9.7 ms p99. Rust stays at
-  a 1.1 ms median and a 2.3 ms p99.
+  a 1.1 ms median and a 2.1 ms p99; its p99.9 rises to 5.3 ms.
 - **AssettoServer adds 27 ms on average** at every field size, spread evenly
   from 0 to 55 ms. It relays on a fixed tick of `CLIENT_SEND_INTERVAL_HZ`
   (docs/03 `0x46`), so an update waits for the next tick. It also repeats an
@@ -314,24 +315,25 @@ add the same latency in every band:
 - **Rust's thinning lowers the rate, not the freshness**: 100–500 m cars
   get a quarter to a half of their updates, each still relayed in about 1 ms.
   Cars outside the 500 m bubble are held for the tick's `0x48`
-  (`BatchFarPositions`), so they wait up to one tick (30–50 ms). That is
-  where Rust's maximum at 32 and 64 players comes from.
+  (`BatchFarPositions`), so they wait up to one tick (25–56 ms). That is
+  where Rust's maximum at 32 players comes from. At 64 the maximum (35 ms)
+  is a single 100–500 m update, a stall while the harness's 64 clients
+  share the host's 8 threads with the server.
 - Delivered can read slightly over 100% within a band. The band is judged
   when an update is sent and again when it arrives, and a pair can cross a
   boundary in between.
 
 ### Caveats
 
-- One run per scenario: no repeats, so no error bars. Compare servers within one
-  table, not across runs; this host's load varies between sessions.
+- One run per scenario: no repeats, so no error bars. This host's load varies
+  between sessions, and the Rust rows come from a later session than the
+  vanilla and AssettoServer rows, so small differences between them are noise.
 - The simulated clients run on the same 8 threads as the server, so their CPU
   competes with the server's. The harness's own load grows with the square of
   the field.
 - CPU and RSS come from the server process only; the client harness and
   AssettoServer's startup network lookups are not counted.
-- The host suspended itself partway through the first 64-player Rust run, so
-  that run was discarded; Rust and AssettoServer's 64-player runs were done
-  again under `systemd-inhibit --what=sleep:idle`. On a laptop, wrap any long
-  run in it.
+- On a laptop, wrap any long run in `systemd-inhibit --what=sleep:idle`: a
+  suspend partway through a run spoils it.
 - Raw logs for the run (per-server logs, JSON result lines) were kept outside the
   repo; the JSON lines are what the tables above were generated from.
