@@ -3,6 +3,16 @@
 Keep a section short: what an operator or player would notice, a few bullets at
 most. The reasoning behind a change belongs in its commit message, not here.
 
+## v1.0.3
+
+- **Busy servers use less CPU:** a 64-player race now takes about 9% of a
+  core, down from 21%.
+- **Harder to abuse.** Packets one client sends to the other players are
+  rate-limited, results files cap laps and collisions per car, and the HTTP
+  server caps open connections at 256 and drops slow requests after 5 s.
+- `PlayerLoadingTimeoutMinutes` below 1 now refuses to start, and only the
+  challenged driver can `/accept` a race challenge.
+
 ## v1.0.2
 
 - **Non-ASCII team and nation names show correctly** to other players, as
